@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Stana mea",
+    "slug": "stana-mea",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#F6F4EB"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ro.stanamea.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F6F4EB"
+      },
+      "package": "ro.stanamea.app"
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-notifications",
+      "expo-status-bar"
+    ]
+  }
+}
