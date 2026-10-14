@@ -1,0 +1,40 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isMember(farmId) {
+      return signedIn() && exists(/databases/$(database)/documents/farms/$(farmId)/members/$(request.auth.uid));
+    }
+
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // Codul de invitație se poate citi doar dacă îl cunoști (get), nu se poate lista.
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow create: if isMember(request.resource.data.farmId);
+    }
+
+    match /farms/{farmId} {
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow read, update: if isMember(farmId);
+
+      match /members/{uid} {
+        allow read: if isMember(farmId);
+        allow create: if signedIn() && uid == request.auth.uid && (
+          get(/databases/$(database)/documents/farms/$(farmId)).data.ownerId == uid ||
+          get(/databases/$(database)/documents/invites/$(request.resource.data.inviteCode)).data.farmId == farmId
+        );
+      }
+
+      match /{collection}/{docId} {
+        allow read, write: if collection != 'members' && isMember(farmId);
+      }
+    }
+  }
+}

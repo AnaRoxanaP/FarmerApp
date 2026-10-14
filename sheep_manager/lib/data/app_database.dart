@@ -304,6 +304,34 @@ class AppDatabase extends _$AppDatabase {
     return id;
   }
 
+  Future<String?> readSetting(String key) async {
+    final row = await (select(appSettings)..where((setting) => setting.key.equals(key))).getSingleOrNull();
+    return row?.settingValue;
+  }
+
+  Future<void> writeSetting(String key, String value) {
+    return into(appSettings).insertOnConflictUpdate(AppSettingsCompanion.insert(key: key, settingValue: value));
+  }
+
+  /// Mută datele locale sub gospodăria din cloud (id-ul ei devine id-ul local).
+  Future<void> adoptFarm({required String farmId, required String name}) async {
+    final oldId = await ensureLocalFarm();
+    if (oldId == farmId) return;
+    await customStatement('PRAGMA foreign_keys = OFF');
+    try {
+      await transaction(() async {
+        await into(farms).insertOnConflictUpdate(FarmsCompanion.insert(id: farmId, name: name));
+        for (final table in const ['animals', 'farm_members', 'lambings', 'lambing_lambs', 'treatments', 'breeding_events', 'weighings', 'animal_events', 'sync_queue']) {
+          await customStatement('UPDATE $table SET farm_id = ? WHERE farm_id = ?', [farmId, oldId]);
+        }
+        await customStatement('DELETE FROM farms WHERE id = ?', [oldId]);
+        await writeSetting(_localFarmSettingKey, farmId);
+      });
+    } finally {
+      await customStatement('PRAGMA foreign_keys = ON');
+    }
+  }
+
   Stream<List<Animal>> watchAnimals({String? farmId, bool includeInactive = false}) {
     final resolvedFarmId = farmId == null ? ensureLocalFarm() : Future<String>.value(farmId);
     return Stream<String>.fromFuture(resolvedFarmId).asyncExpand((id) {

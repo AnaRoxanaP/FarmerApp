@@ -1,7 +1,10 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
+import 'auth/auth_gate.dart';
 import 'data/app_database.dart';
+import 'firebase_options.dart';
 import 'services/treatment_notifications.dart';
 
 const _forest = Color(0xFF24513F);
@@ -16,11 +19,15 @@ Future<void> main() async {
   try {
     await TreatmentNotifications.initialize();
   } catch (_) {}
-  runApp(const StanaApp());
+  final cloudEnabled = DefaultFirebaseOptions.isConfigured;
+  if (cloudEnabled) await Firebase.initializeApp(options: DefaultFirebaseOptions.web);
+  runApp(StanaApp(cloudEnabled: cloudEnabled));
 }
 
 class StanaApp extends StatefulWidget {
-  const StanaApp({super.key});
+  const StanaApp({this.cloudEnabled = false, super.key});
+
+  final bool cloudEnabled;
 
   @override
   State<StanaApp> createState() => _StanaAppState();
@@ -60,15 +67,16 @@ class _StanaAppState extends State<StanaApp> {
           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _leaf, width: 1.5)),
         ),
       ),
-      home: AnimalListScreen(database: _database),
+      home: widget.cloudEnabled ? AuthGate(database: _database) : AnimalListScreen(database: _database),
     );
   }
 }
 
 class AnimalListScreen extends StatefulWidget {
-  const AnimalListScreen({required this.database, super.key});
+  const AnimalListScreen({required this.database, this.accountActions = const [], super.key});
 
   final AppDatabase database;
+  final List<Widget> accountActions;
 
   @override
   State<AnimalListScreen> createState() => _AnimalListScreenState();
@@ -164,6 +172,7 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
             Text(['EVIDENȚA TURMEI', 'JURNALUL MIEILOR', 'SĂNĂTATEA TURMEI'][_tabIndex], style: TextStyle(fontSize: 9, letterSpacing: 1, fontWeight: FontWeight.w700, color: _muted)),
           ]),
         ]),
+        actions: widget.accountActions,
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addCurrentRecord,
