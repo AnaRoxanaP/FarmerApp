@@ -27,6 +27,8 @@ void main() {
     await tester.enterText(fields.at(0), 'Mioara test');
     await tester.enterText(fields.at(1), 'Țurcană');
     await tester.enterText(fields.at(2), 'RO-900');
+    await tester.scrollUntilVisible(find.text('Adaugă în turmă'), 200, scrollable: find.byType(Scrollable).last);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Adaugă în turmă'));
     await tester.pumpAndSettle();
 

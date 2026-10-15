@@ -74,6 +74,25 @@ class SyncService {
     return rows.length;
   }
 
+  /// O linie pe animal din cloud, cu motivul pentru care ar putea lipsi din listă.
+  Future<List<String>> diagnoseAnimals() async {
+    final remote = await _collection(_animals).get(const GetOptions(source: Source.server));
+    final local = {for (final row in await database.select(database.animals).get()) row.id: row};
+    return [
+      for (final doc in remote.docs)
+        () {
+          final data = doc.data();
+          final row = local[doc.id];
+          final notes = <String>[
+            if (data['status'] != 'active') 'status=${data['status']}',
+            if (data['deletedAt'] != null) 'șters',
+            if (row == null) 'LIPSEȘTE local' else if (row.farmId != farmId) 'altă gospodărie local',
+          ];
+          return '${data['name']} (${data['earTag']}): ${notes.isEmpty ? 'ok' : notes.join(', ')}';
+        }(),
+    ];
+  }
+
   static final _animals = _entity<$AnimalsTable, Animal>(
     collection: 'animals',
     table: (db) => db.animals,
@@ -135,6 +154,13 @@ class SyncService {
   };
 
   CollectionReference<_Json> _collection(_Entity entity) => _firestore.collection('farms').doc(farmId).collection(entity.collection);
+
+  /// Mută rândurile rămase sub un id de gospodărie vechi în gospodăria curentă (aplicația are o singură gospodărie per cont).
+  Future<void> repairFarmIds() async {
+    for (final table in const ['animals', 'lambings', 'lambing_lambs', 'treatments', 'breeding_events', 'weighings', 'animal_events', 'sync_queue']) {
+      await database.customStatement('UPDATE $table SET farm_id = ? WHERE farm_id != ?', [farmId, farmId]);
+    }
+  }
 
   Future<void> refreshRemote() async {
     for (final entity in _all) {

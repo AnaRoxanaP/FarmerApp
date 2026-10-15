@@ -86,6 +86,19 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
   final _searchController = TextEditingController();
   String _query = '';
   int _tabIndex = 0;
+  String _group = 'all';
+
+  // Miel = animal sub un an; fără dată a nașterii, animalul se consideră adult.
+  bool _isLamb(Animal animal) {
+    final born = animal.birthDate;
+    return born != null && DateTime.now().difference(born).inDays < 365;
+  }
+
+  List<Animal> _filterGroup(List<Animal> animals) => switch (_group) {
+        'lambs' => animals.where(_isLamb).toList(),
+        'sheep' => animals.where((animal) => !_isLamb(animal)).toList(),
+        _ => animals,
+      };
 
   @override
   void dispose() {
@@ -186,7 +199,8 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
         builder: (context, snapshot) {
           if (snapshot.hasError) return _ErrorState(message: 'Nu am putut citi baza de date locală.');
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: _leaf));
-          final animals = _filterAnimals(snapshot.data!);
+          final grouped = _filterGroup(snapshot.data!);
+          final animals = _filterAnimals(grouped);
           return CustomScrollView(slivers: [
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
@@ -199,7 +213,16 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
                 const SizedBox(height: 22),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                   const Text('Turma mea', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
-                  Text('${snapshot.data!.length} ${snapshot.data!.length == 1 ? 'animal' : 'animale'}', style: const TextStyle(fontSize: 11, color: _muted)),
+                  Text('${grouped.length} ${grouped.length == 1 ? 'animal' : 'animale'}', style: const TextStyle(fontSize: 11, color: _muted)),
+                ]),
+                const SizedBox(height: 12),
+                Wrap(spacing: 8, children: [
+                  for (final option in const [('all', 'Toată turma'), ('sheep', 'Oi'), ('lambs', 'Miei')])
+                    ChoiceChip(
+                      label: Text(option.$2),
+                      selected: _group == option.$1,
+                      onSelected: (_) => setState(() => _group = option.$1),
+                    ),
                 ]),
                 const SizedBox(height: 12),
                 TextField(
@@ -552,9 +575,11 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
                     const SizedBox(height: 12),
                     const _FormLabel(label: 'Observații despre fătare (opțional)'),
                     TextFormField(controller: _notes, maxLines: 2, decoration: const InputDecoration(hintText: 'Note despre mamă sau fătare')),
+                    const SizedBox(height: 24),
+                    SizedBox(width: double.infinity, height: 49, child: FilledButton.icon(onPressed: _saving ? null : _save, icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check_rounded), label: Text(_saving ? 'Se salvează…' : 'Salvează fătarea'))),
+                    const SizedBox(height: 8),
                   ]),
                 )),
-              Padding(padding: const EdgeInsets.fromLTRB(22, 10, 22, 20), child: SizedBox(width: double.infinity, height: 49, child: FilledButton.icon(onPressed: _saving || mothers.isEmpty ? null : _save, icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check_rounded), label: Text(_saving ? 'Se salvează…' : 'Salvează fătarea')))),
             ]),
           ),
         );
@@ -807,8 +832,10 @@ class _AddTreatmentSheetState extends State<AddTreatmentSheet> {
                     if (_followUpAt != null) Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => setState(() => _followUpAt = null), child: const Text('Șterge data controlului'))),
                     const SizedBox(height: 12),
                     TextFormField(controller: _notes, maxLines: 2, decoration: const InputDecoration(labelText: 'Observații (opțional)')),
+                    const SizedBox(height: 24),
+                    SizedBox(width: double.infinity, height: 49, child: FilledButton.icon(onPressed: _saving || _animalIds.isEmpty ? null : _save, icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check_rounded), label: Text(_saving ? 'Se salvează…' : 'Salvează pentru ${_animalIds.length}'))),
+                    const SizedBox(height: 8),
                   ]))),
-                Padding(padding: const EdgeInsets.fromLTRB(22, 10, 22, 20), child: SizedBox(width: double.infinity, height: 49, child: FilledButton.icon(onPressed: _saving || animals.isEmpty || _animalIds.isEmpty ? null : _save, icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check_rounded), label: Text(_saving ? 'Se salvează…' : 'Salvează pentru ${_animalIds.length}')))),
               ]),
             ),
           );
@@ -1198,9 +1225,11 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
               const SizedBox(height: 15),
               const _FormLabel(label: 'Data nașterii (opțional)'),
               OutlinedButton.icon(onPressed: _pickBirthDate, icon: const Icon(Icons.calendar_month_rounded), label: Text(_birthDate == null ? 'Alege data' : MaterialLocalizations.of(context).formatMediumDate(_birthDate!)), style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14))),
+              const SizedBox(height: 24),
+              SizedBox(width: double.infinity, height: 49, child: FilledButton.icon(onPressed: _saving ? null : _save, icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check_rounded), label: Text(_saving ? 'Se salvează…' : widget.animal == null ? 'Adaugă în turmă' : 'Salvează modificările'))),
+              const SizedBox(height: 8),
             ]),
           )),
-            Padding(padding: const EdgeInsets.fromLTRB(22, 10, 22, 20), child: SizedBox(width: double.infinity, height: 49, child: FilledButton.icon(onPressed: _saving ? null : _save, icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check_rounded), label: Text(_saving ? 'Se salvează…' : widget.animal == null ? 'Adaugă în turmă' : 'Salvează modificările')))),
         ]),
       ),
     );

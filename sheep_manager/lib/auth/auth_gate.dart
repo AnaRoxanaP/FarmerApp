@@ -332,7 +332,13 @@ class _SyncedHomeState extends State<SyncedHome> {
       // Fără internet păstrăm legătura existentă.
     }
     if (!mounted) return;
-    final sync = SyncService(database: widget.database, farmId: widget.farmId)..start();
+    final sync = SyncService(database: widget.database, farmId: widget.farmId);
+    try {
+      await sync.repairFarmIds();
+    } catch (error) {
+      sync.errors.add('reparare gospodărie: $error');
+    }
+    sync.start();
     _sync = sync;
     // Trimite și ce s-a adăugat local înainte ca sincronizarea să fie activă.
     sync.uploadEverything().catchError((Object error) => sync.errors.add('încărcare inițială: $error'));
@@ -354,6 +360,12 @@ class _SyncedHomeState extends State<SyncedHome> {
       remote = 'eroare ($error)';
     }
     final local = await sync.localAnimalCount();
+    List<String> details;
+    try {
+      details = await sync.diagnoseAnimals();
+    } catch (error) {
+      details = ['eroare: $error'];
+    }
     if (!mounted) return;
     await showDialog<void>(
       context: context,
@@ -364,6 +376,7 @@ class _SyncedHomeState extends State<SyncedHome> {
             'Gospodărie: ${widget.farmId}\n'
             'Animale pe acest dispozitiv: $local\n'
             'Animale în cloud: $remote\n\n'
+            '${details.join('\n')}\n\n'
             '${sync.errors.isEmpty ? 'Nicio eroare.' : sync.errors.join('\n\n')}',
           ),
         ),
