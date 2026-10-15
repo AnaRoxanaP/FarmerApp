@@ -321,12 +321,55 @@ class SyncedHome extends StatefulWidget {
 }
 
 class _SyncedHomeState extends State<SyncedHome> {
-  late final SyncService _sync = SyncService(database: widget.database, farmId: widget.farmId)..start();
+  SyncService? _sync;
+  late final Future<void> _ready = _prepare();
+
+  Future<void> _prepare() async {
+    // Fără asta, un dispozitiv nou ar afișa gospodăria locală goală, nu pe cea din cloud.
+    try {
+      await widget.farms.attachLocalFarm(widget.database, widget.farmId);
+    } catch (_) {
+      // Fără internet păstrăm legătura existentă.
+    }
+    if (!mounted) return;
+    final sync = SyncService(database: widget.database, farmId: widget.farmId)..start();
+    _sync = sync;
+    // Trimite și ce s-a adăugat local înainte ca sincronizarea să fie activă.
+    sync.uploadEverything().catchError((Object error) => sync.errors.add('încărcare inițială: $error'));
+  }
 
   @override
   void dispose() {
-    _sync.stop();
+    _sync?.stop();
     super.dispose();
+  }
+
+  Future<void> _showSyncStatus() async {
+    final sync = _sync;
+    if (sync == null) return;
+    String remote;
+    try {
+      remote = '${await sync.remoteAnimalCount()}';
+    } catch (error) {
+      remote = 'eroare ($error)';
+    }
+    final local = await sync.localAnimalCount();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Stare sincronizare'),
+        content: SingleChildScrollView(
+          child: SelectableText(
+            'Gospodărie: ${widget.farmId}\n'
+            'Animale pe acest dispozitiv: $local\n'
+            'Animale în cloud: $remote\n\n'
+            '${sync.errors.isEmpty ? 'Nicio eroare.' : sync.errors.join('\n\n')}',
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Închide'))],
+      ),
+    );
   }
 
   Future<void> _showInviteCode() async {
@@ -351,6 +394,16 @@ class _SyncedHomeState extends State<SyncedHome> {
 
   @override
   Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _ready,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) return const _Loading();
+        return _home();
+      },
+    );
+  }
+
+  Widget _home() {
     return AnimalListScreen(
       database: widget.database,
       accountActions: [
@@ -358,10 +411,12 @@ class _SyncedHomeState extends State<SyncedHome> {
           icon: const Icon(Icons.account_circle_outlined),
           onSelected: (value) {
             if (value == 'invite') _showInviteCode();
+            if (value == 'sync') _showSyncStatus();
             if (value == 'signout') FirebaseAuth.instance.signOut();
           },
           itemBuilder: (context) => const [
             PopupMenuItem(value: 'invite', child: Text('Cod de invitație')),
+            PopupMenuItem(value: 'sync', child: Text('Stare sincronizare')),
             PopupMenuItem(value: 'signout', child: Text('Ieși din cont')),
           ],
         ),

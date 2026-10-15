@@ -58,6 +58,22 @@ class SyncService {
   bool _pushAgain = false;
   bool _stopped = false;
 
+  /// Ultima eroare de sincronizare, pentru afișare în aplicație.
+  final errors = <String>[];
+
+  void _fail(String message) {
+    debugPrint('Sincronizare: $message');
+    errors.add(message);
+    if (errors.length > 5) errors.removeAt(0);
+  }
+
+  Future<int> remoteAnimalCount() async => (await _collection(_animals).count().get(source: AggregateSource.server)).count ?? 0;
+
+  Future<int> localAnimalCount() async {
+    final rows = await (database.select(database.animals)..where((row) => row.farmId.equals(farmId))).get();
+    return rows.length;
+  }
+
   static final _animals = _entity<$AnimalsTable, Animal>(
     collection: 'animals',
     table: (db) => db.animals,
@@ -120,7 +136,23 @@ class SyncService {
 
   CollectionReference<_Json> _collection(_Entity entity) => _firestore.collection('farms').doc(farmId).collection(entity.collection);
 
+  Future<void> refreshRemote() async {
+    for (final entity in _all) {
+      try {
+        final snapshot = await _collection(entity).get();
+        for (final doc in snapshot.docs) {
+          final data = doc.data();
+          _enqueueApply(entity, data);
+        }
+      } catch (error) {
+        _fail('nu am putut încărca ${entity.collection}: $error');
+      }
+    }
+    await _applyChain;
+  }
+
   void start() {
+    unawaited(refreshRemote());
     for (final entity in _all) {
       _subscriptions.add(_collection(entity).snapshots().listen(
         (snapshot) {
@@ -130,7 +162,7 @@ class SyncService {
             _enqueueApply(entity, data);
           }
         },
-        onError: (Object error) => debugPrint('Sincronizare: $error'),
+        onError: (Object error) => _fail('${entity.collection}: $error'),
       ));
     }
     _subscriptions.add(database.select(database.syncQueue).watch().listen((rows) {
@@ -153,9 +185,10 @@ class SyncService {
       if (_stopped) return;
       try {
         await database.customStatement('PRAGMA foreign_keys = OFF');
-        await entity.apply(database, data);
+        // Documentul stă în gospodăria curentă; un farmId diferit l-ar ascunde din listă.
+        await entity.apply(database, {...data, 'farmId': farmId});
       } catch (error) {
-        debugPrint('Sincronizare: nu am putut aplica ${entity.collection}: $error');
+        _fail('nu am putut aplica ${entity.collection}: $error');
       } finally {
         await database.customStatement('PRAGMA foreign_keys = ON');
       }
@@ -183,7 +216,7 @@ class SyncService {
         }
       } while (_pushAgain);
     } catch (error) {
-      debugPrint('Sincronizare: trimiterea a eșuat, reîncerc: $error');
+      _fail('trimiterea a eșuat, reîncerc: $error');
       _retryTimer?.cancel();
       if (!_stopped) _retryTimer = Timer(const Duration(seconds: 30), () => unawaited(push()));
     } finally {

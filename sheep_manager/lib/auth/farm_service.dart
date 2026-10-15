@@ -35,6 +35,12 @@ class FarmService {
     return snapshot.data()?['inviteCode'] as String?;
   }
 
+  /// Leagă baza locală de gospodăria din cloud, pentru dispozitivele pe care contul s-a conectat după creare.
+  Future<void> attachLocalFarm(AppDatabase database, String farmId) async {
+    final snapshot = await _firestore.collection('farms').doc(farmId).get();
+    await database.adoptFarm(farmId: farmId, name: (snapshot.data()?['name'] as String?) ?? 'Gospodăria noastră');
+  }
+
   /// Gospodăria locală existentă devine gospodăria din cloud; datele se încarcă separat de SyncService.
   Future<String> createFarm(AppDatabase database, String uid) async {
     final farmId = await database.ensureLocalFarm();
