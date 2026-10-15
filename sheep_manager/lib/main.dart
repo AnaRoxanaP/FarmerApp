@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import 'auth/auth_gate.dart';
 import 'data/app_database.dart';
+import 'ear_marks.dart';
 import 'firebase_options.dart';
 import 'services/treatment_notifications.dart';
 
@@ -72,6 +73,8 @@ class _StanaAppState extends State<StanaApp> {
   }
 }
 
+String formatDate(DateTime date) => '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+
 class AnimalListScreen extends StatefulWidget {
   const AnimalListScreen({required this.database, this.accountActions = const [], super.key});
 
@@ -87,7 +90,11 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
   String _query = '';
   int _tabIndex = 0;
   String _group = 'all';
+  String _statusFilter = 'active';
 
+  static const _statusFilters = [('active', 'În turmă'), ('sold', 'Vândute'), ('slaughtered', 'Sacrificate'), ('all', 'Toate')];
+
+  List<Animal> _filterStatus(List<Animal> animals) => _statusFilter == 'all' ? animals : animals.where((animal) => animal.status == _statusFilter).toList();
   // Miel = animal sub un an; fără dată a nașterii, animalul se consideră adult.
   bool _isLamb(Animal animal) {
     final born = animal.birthDate;
@@ -195,11 +202,12 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
         label: Text(['Animal nou', 'Fătare', 'Tratament'][_tabIndex], style: const TextStyle(fontWeight: FontWeight.w700)),
       ),
       body: _tabIndex == 0 ? StreamBuilder<List<Animal>>(
-        stream: widget.database.watchAnimals(),
+        stream: widget.database.watchAnimals(includeInactive: true),
         builder: (context, snapshot) {
           if (snapshot.hasError) return _ErrorState(message: 'Nu am putut citi baza de date locală.');
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: _leaf));
-          final grouped = _filterGroup(snapshot.data!);
+          final activeCount = snapshot.data!.where((animal) => animal.status == 'active').length;
+          final grouped = _filterGroup(_filterStatus(snapshot.data!));
           final animals = _filterAnimals(grouped);
           return CustomScrollView(slivers: [
             SliverPadding(
@@ -209,7 +217,7 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
                 const SizedBox(height: 6),
                 const Text('Fișele animalelor voastre, păstrate la un loc.', style: TextStyle(fontSize: 13, color: _muted)),
                 const SizedBox(height: 20),
-                _SummaryBanner(count: snapshot.data!.length),
+                _SummaryBanner(count: activeCount),
                 const SizedBox(height: 22),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                   const Text('Turma mea', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
@@ -217,7 +225,16 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
                 ]),
                 const SizedBox(height: 12),
                 Wrap(spacing: 8, children: [
-                  for (final option in const [('all', 'Toată turma'), ('sheep', 'Oi'), ('lambs', 'Miei')])
+                  for (final option in _statusFilters)
+                    ChoiceChip(
+                      label: Text(option.$2),
+                      selected: _statusFilter == option.$1,
+                      onSelected: (_) => setState(() => _statusFilter = option.$1),
+                    ),
+                ]),
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, children: [
+                  for (final option in const [('all', 'Toate'), ('sheep', 'Oi'), ('lambs', 'Miei')])
                     ChoiceChip(
                       label: Text(option.$2),
                       selected: _group == option.$1,
@@ -310,7 +327,7 @@ class LambingsScreen extends StatelessWidget {
                         contentPadding: const EdgeInsets.symmetric(vertical: 5),
                         leading: const CircleAvatar(backgroundColor: Color(0xFFFAF0D6), child: Icon(Icons.child_friendly_rounded, color: Color(0xFFB5831D))),
                         title: Text(mother?.name ?? 'Mamă necunoscută', style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
-                        subtitle: Text('${MaterialLocalizations.of(context).formatMediumDate(record.occurredAt)} · ${record.birthType}\n${record.notes.isEmpty ? 'Fără observații' : record.notes}', style: const TextStyle(fontSize: 11, height: 1.5, color: _muted)),
+                        subtitle: Text('${formatDate(record.occurredAt)} · ${record.birthType}\n${record.notes.isEmpty ? 'Fără observații' : record.notes}', style: const TextStyle(fontSize: 11, height: 1.5, color: _muted)),
                         isThreeLine: true,
                       );
                     },
@@ -365,12 +382,12 @@ class TreatmentsScreen extends StatelessWidget {
                       final record = records[index];
                       final animal = byId[record.animalId];
                       final dose = record.doseValue == null ? '' : ' · ${record.doseValue} ${record.doseUnit ?? ''}'.trimRight();
-                      final followUp = record.followUpAt == null ? '' : '\nDe refăcut: ${MaterialLocalizations.of(context).formatMediumDate(record.followUpAt!)}';
+                      final followUp = record.followUpAt == null ? '' : '\nDe refăcut: ${formatDate(record.followUpAt!)}';
                       return ListTile(
                         contentPadding: const EdgeInsets.symmetric(vertical: 5),
                         leading: const CircleAvatar(backgroundColor: Color(0xFFF9E9E3), child: Icon(Icons.medical_services_outlined, color: Color(0xFFD96D54))),
                         title: Text(record.productName, style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
-                        subtitle: Text('${animal?.name ?? 'Animal necunoscut'} · ${MaterialLocalizations.of(context).formatMediumDate(record.administeredAt)}$dose$followUp${record.notes.isEmpty ? '' : '\n${record.notes}'}', style: const TextStyle(fontSize: 11, height: 1.5, color: _muted)),
+                        subtitle: Text('${animal?.name ?? 'Animal necunoscut'} · ${formatDate(record.administeredAt)}$dose$followUp${record.notes.isEmpty ? '' : '\n${record.notes}'}', style: const TextStyle(fontSize: 11, height: 1.5, color: _muted)),
                         isThreeLine: record.notes.isNotEmpty || record.followUpAt != null,
                       );
                     },
@@ -490,7 +507,6 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
       stream: widget.database.watchAnimals(),
       builder: (context, snapshot) {
         final mothers = (snapshot.data ?? const <Animal>[]).where((animal) => animal.sex == 'Femelă' && animal.status == 'active').toList();
-        _damId ??= mothers.isEmpty ? null : mothers.first.id;
         final filteredMothers = _filterMothers(mothers);
         Animal? selectedMother;
         for (final mother in mothers) {
@@ -537,7 +553,11 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
                           Expanded(child: Text('Mama selectată: ${selectedMother.name} · ${selectedMother.earTag}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _forest))),
                         ]),
                       ),
-                    ],
+                    ] else
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text('Selectează mama pentru această fătare.', style: TextStyle(fontSize: 11, color: _muted)),
+                      ),
                     if (filteredMothers.isEmpty)
                       const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('Nu am găsit o oaie după acest criteriu.', style: TextStyle(fontSize: 11, color: _muted)))
                     else
@@ -551,7 +571,7 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
                           )),
                     const SizedBox(height: 14),
                     const _FormLabel(label: 'Data fătării'),
-                    OutlinedButton.icon(onPressed: _pickDate, icon: const Icon(Icons.calendar_month_rounded), label: Text(MaterialLocalizations.of(context).formatMediumDate(_occurredAt)), style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14))),
+                    OutlinedButton.icon(onPressed: _pickDate, icon: const Icon(Icons.calendar_month_rounded), label: Text(formatDate(_occurredAt)), style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14))),
                     const SizedBox(height: 14),
                     const _FormLabel(label: 'Tipul fătării'),
                     DropdownButtonFormField<String>(
@@ -576,7 +596,7 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
                     const _FormLabel(label: 'Observații despre fătare (opțional)'),
                     TextFormField(controller: _notes, maxLines: 2, decoration: const InputDecoration(hintText: 'Note despre mamă sau fătare')),
                     const SizedBox(height: 24),
-                    SizedBox(width: double.infinity, height: 49, child: FilledButton.icon(onPressed: _saving ? null : _save, icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check_rounded), label: Text(_saving ? 'Se salvează…' : 'Salvează fătarea'))),
+                    SizedBox(width: double.infinity, height: 49, child: FilledButton.icon(onPressed: _saving || _damId == null ? null : _save, icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check_rounded), label: Text(_saving ? 'Se salvează…' : 'Salvează fătarea'))),
                     const SizedBox(height: 8),
                   ]),
                 )),
@@ -821,14 +841,14 @@ class _AddTreatmentSheetState extends State<AddTreatmentSheet> {
                     Row(children: [Expanded(child: TextFormField(controller: _dose, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Doză'))), const SizedBox(width: 10), SizedBox(width: 110, child: TextFormField(controller: _unit, decoration: const InputDecoration(labelText: 'Unitate')))]),
                     const SizedBox(height: 12),
                     const _FormLabel(label: 'Data administrării'),
-                    OutlinedButton.icon(onPressed: () async { final date = await _pickDate(_administeredAt); if (date != null) setState(() => _administeredAt = date); }, icon: const Icon(Icons.calendar_month_rounded), label: Text(MaterialLocalizations.of(context).formatMediumDate(_administeredAt)), style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft)),
+                    OutlinedButton.icon(onPressed: () async { final date = await _pickDate(_administeredAt); if (date != null) setState(() => _administeredAt = date); }, icon: const Icon(Icons.calendar_month_rounded), label: Text(formatDate(_administeredAt)), style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft)),
                     const SizedBox(height: 12),
                     TextFormField(controller: _reason, decoration: const InputDecoration(labelText: 'Motiv (opțional)')),
                     const SizedBox(height: 12),
                     Row(children: [Expanded(child: TextFormField(controller: _meatWait, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Așteptare carne (zile)'), validator: _nonNegativeInteger)), const SizedBox(width: 10), Expanded(child: TextFormField(controller: _milkWait, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Așteptare lapte (zile)'), validator: _nonNegativeInteger))]),
                     const SizedBox(height: 12),
                     const _FormLabel(label: 'Data controlului (opțional)'),
-                    OutlinedButton.icon(onPressed: () async { final date = await _pickDate(_followUpAt ?? DateTime.now()); if (date != null) setState(() => _followUpAt = date); }, icon: const Icon(Icons.notifications_outlined), label: Text(_followUpAt == null ? 'Alege data' : MaterialLocalizations.of(context).formatMediumDate(_followUpAt!)), style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft)),
+                    OutlinedButton.icon(onPressed: () async { final date = await _pickDate(_followUpAt ?? DateTime.now()); if (date != null) setState(() => _followUpAt = date); }, icon: const Icon(Icons.notifications_outlined), label: Text(_followUpAt == null ? 'Alege data' : formatDate(_followUpAt!)), style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft)),
                     if (_followUpAt != null) Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => setState(() => _followUpAt = null), child: const Text('Șterge data controlului'))),
                     const SizedBox(height: 12),
                     TextFormField(controller: _notes, maxLines: 2, decoration: const InputDecoration(labelText: 'Observații (opțional)')),
@@ -904,7 +924,10 @@ class _AnimalTile extends StatelessWidget {
       leading: CircleAvatar(backgroundColor: female ? const Color(0xFFE8F1E8) : const Color(0xFFE5F0F1), child: Icon(Icons.pets_rounded, color: female ? _leaf : const Color(0xFF4A8290), size: 20)),
       title: Text(animal.name, style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
       subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text('${animal.breed} · ${animal.sex.toLowerCase()}\nCrotaliu ${animal.earTag}', style: const TextStyle(fontSize: 11, height: 1.45, color: _muted))),
-      trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFFA7AEA5)),
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (!EarMarks.decode(animal.earMarks).isEmpty) EarMarksView(marks: EarMarks.decode(animal.earMarks), height: 28, showLabels: false),
+        const Icon(Icons.chevron_right_rounded, color: Color(0xFFA7AEA5)),
+      ]),
       isThreeLine: true,
       onTap: onTap,
     );
@@ -946,6 +969,86 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
     }
   }
 
+  Future<void> _changeStatus(Animal animal) async {
+    final notes = TextEditingController();
+    var status = animal.status;
+    var date = DateTime.now();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          title: const Text('Schimbă starea'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              for (final option in const [('active', 'În turmă'), ('sold', 'Vândut(ă)'), ('slaughtered', 'Sacrificat(ă)'), ('deceased', 'Decedat(ă)'), ('transferred', 'Transferat(ă)')])
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(status == option.$1 ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: _leaf),
+                  title: Text(option.$2),
+                  onTap: () => setLocal(() => status = option.$1),
+                ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.event_outlined),
+                label: Text(formatDate(date)),
+                onPressed: () async {
+                  final picked = await showDatePicker(context: context, initialDate: date, firstDate: DateTime(2000), lastDate: DateTime.now());
+                  if (picked != null) setLocal(() => date = picked);
+                },
+              ),
+              const SizedBox(height: 8),
+              TextField(controller: notes, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(hintText: 'Detalii (ex: cumpărător, preț)'), maxLines: 2),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anulează')),
+            FilledButton(onPressed: status == animal.status ? null : () => Navigator.pop(context, true), child: const Text('Salvează')),
+          ],
+        ),
+      ),
+    );
+    final text = notes.text;
+    notes.dispose();
+    if (confirmed != true || !mounted) return;
+    await widget.database.archiveAnimal(animalId: animal.id, status: status, notes: text, occurredAt: date);
+    if (!mounted) return;
+    setState(() => _historyFuture = widget.database.loadAnimalHistory(widget.animalId));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Starea animalului a fost actualizată.')));
+  }
+
+  Future<void> _deleteAnimal(Animal animal) async {
+    final confirmation = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          title: const Text('Ștergi definitiv animalul?'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('„${animal.name}” și tratamentele, cântăririle și evenimentele lui vor dispărea de pe toate dispozitivele. Dacă a fost doar vândut sau sacrificat, folosește „Schimbă” la stare.'),
+            const SizedBox(height: 12),
+            Text('Scrie ȘTERGE ca să confirmi:', style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            TextField(controller: confirmation, autocorrect: false, textCapitalization: TextCapitalization.characters, onChanged: (_) => setLocal(() {})),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anulează')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB3261E)),
+              onPressed: confirmation.text.trim().toUpperCase() == 'ȘTERGE' || confirmation.text.trim().toUpperCase() == 'STERGE' ? () => Navigator.pop(context, true) : null,
+              child: const Text('Șterge'),
+            ),
+          ],
+        ),
+      ),
+    );
+    confirmation.dispose();
+    if (confirmed != true || !mounted) return;
+    await widget.database.deleteAnimal(animal.id);
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
@@ -982,14 +1085,35 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
                         _DetailField(label: 'NUMĂR INTERN', value: animal.internalNumber!),
                       ],
                       const SizedBox(height: 12),
-                      _DetailField(label: 'SEMN LA URECHI', value: animal.mark.isEmpty ? 'Nespecificat' : animal.mark),
+                      if (!EarMarks.decode(animal.earMarks).isEmpty) ...[
+                        _DetailField(label: 'SEMNE LA URECHI ȘI COARNE', value: EarMarks.decode(animal.earMarks).summary),
+                        const SizedBox(height: 10),
+                        Center(child: EarMarksView(marks: EarMarks.decode(animal.earMarks), height: 90)),
+                        if (animal.mark.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          _DetailField(label: 'ALTE DETALII DESPRE SEMN', value: animal.mark),
+                        ],
+                      ] else
+                        _DetailField(label: 'SEMN LA URECHI', value: animal.mark.isEmpty ? 'Nespecificat' : animal.mark),
                       if (animal.birthDate != null) ...[
                         const SizedBox(height: 12),
                         _DetailField(label: 'DATA NAȘTERII', value: _dateText(context, animal.birthDate!)),
                       ],
                       const SizedBox(height: 12),
-                      _DetailField(label: 'STARE', value: _statusText(animal.status)),
+                      Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                        Expanded(child: _DetailField(label: 'STARE', value: _statusText(animal.status))),
+                        OutlinedButton(onPressed: () => _changeStatus(animal), child: const Text('Schimbă')),
+                      ]),
                     ]),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => _deleteAnimal(animal),
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      label: const Text('Șterge animalul definitiv'),
+                      style: TextButton.styleFrom(foregroundColor: const Color(0xFFB3261E)),
+                    ),
                   ),
                   const SizedBox(height: 23),
                   const Text('Istoric', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
@@ -1023,11 +1147,12 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
         ),
       );
 
-  String _dateText(BuildContext context, DateTime date) => MaterialLocalizations.of(context).formatMediumDate(date);
+  String _dateText(BuildContext context, DateTime date) => formatDate(date);
 
   String _statusText(String status) => switch (status) {
         'active' => 'În turmă',
         'sold' => 'Vândut(ă)',
+        'slaughtered' => 'Sacrificat(ă)',
         'deceased' => 'Decedat(ă)',
         'transferred' => 'Transferat(ă)',
         _ => status,
@@ -1097,6 +1222,7 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
   final _breed = TextEditingController();
   final _earTag = TextEditingController();
   final _mark = TextEditingController();
+  EarMarks _earMarks = const EarMarks();
   String _sex = 'Femelă';
   DateTime? _birthDate;
   bool _saving = false;
@@ -1110,6 +1236,7 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
       _breed.text = animal.breed;
       _earTag.text = animal.earTag;
       _mark.text = animal.mark;
+      _earMarks = EarMarks.decode(animal.earMarks);
       _sex = animal.sex;
       _birthDate = animal.birthDate;
     }
@@ -1156,6 +1283,7 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
           breed: _breed.text,
           earTag: _earTag.text,
           mark: _mark.text,
+          earMarks: _earMarks.encode(),
           birthDate: _birthDate,
         );
       } else {
@@ -1170,6 +1298,7 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
           breed: _breed.text,
           earTag: _earTag.text,
           mark: _mark.text,
+          earMarks: _earMarks.encode(),
           birthDate: _birthDate,
         );
       }
@@ -1220,11 +1349,14 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
               _FormLabel(label: 'Număr de crotaliu'),
               TextFormField(controller: _earTag, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(hintText: 'De ex. RO-004'), validator: _required),
               const SizedBox(height: 15),
-              _FormLabel(label: 'Semn la urechi'),
-              TextFormField(controller: _mark, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(hintText: 'Descrie semnul sau coarnele'), maxLines: 2),
+              _FormLabel(label: 'Semne la urechi și coarne'),
+              EarMarksEditor(value: _earMarks, onChanged: (value) => setState(() => _earMarks = value)),
+              const SizedBox(height: 15),
+              _FormLabel(label: 'Alte detalii despre semn (opțional)'),
+              TextFormField(controller: _mark, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(hintText: 'Pentru semne care nu se găsesc în listă'), maxLines: 2),
               const SizedBox(height: 15),
               const _FormLabel(label: 'Data nașterii (opțional)'),
-              OutlinedButton.icon(onPressed: _pickBirthDate, icon: const Icon(Icons.calendar_month_rounded), label: Text(_birthDate == null ? 'Alege data' : MaterialLocalizations.of(context).formatMediumDate(_birthDate!)), style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14))),
+              OutlinedButton.icon(onPressed: _pickBirthDate, icon: const Icon(Icons.calendar_month_rounded), label: Text(_birthDate == null ? 'Alege data' : formatDate(_birthDate!)), style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14))),
               const SizedBox(height: 24),
               SizedBox(width: double.infinity, height: 49, child: FilledButton.icon(onPressed: _saving ? null : _save, icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check_rounded), label: Text(_saving ? 'Se salvează…' : widget.animal == null ? 'Adaugă în turmă' : 'Salvează modificările'))),
               const SizedBox(height: 8),

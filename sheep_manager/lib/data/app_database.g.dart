@@ -715,6 +715,12 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       defaultValue: const Constant(''));
+  static const VerificationMeta _earMarksMeta =
+      const VerificationMeta('earMarks');
+  @override
+  late final GeneratedColumn<String> earMarks = GeneratedColumn<String>(
+      'ear_marks', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _birthDateMeta =
       const VerificationMeta('birthDate');
   @override
@@ -803,6 +809,7 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
         breed,
         earTag,
         mark,
+        earMarks,
         birthDate,
         damId,
         sireId,
@@ -869,6 +876,10 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
     if (data.containsKey('mark')) {
       context.handle(
           _markMeta, mark.isAcceptableOrUnknown(data['mark']!, _markMeta));
+    }
+    if (data.containsKey('ear_marks')) {
+      context.handle(_earMarksMeta,
+          earMarks.isAcceptableOrUnknown(data['ear_marks']!, _earMarksMeta));
     }
     if (data.containsKey('birth_date')) {
       context.handle(_birthDateMeta,
@@ -944,6 +955,8 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
           .read(DriftSqlType.string, data['${effectivePrefix}ear_tag'])!,
       mark: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}mark'])!,
+      earMarks: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}ear_marks']),
       birthDate: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}birth_date']),
       damId: attachedDatabase.typeMapping
@@ -984,6 +997,7 @@ class Animal extends DataClass implements Insertable<Animal> {
   final String breed;
   final String earTag;
   final String mark;
+  final String? earMarks;
   final DateTime? birthDate;
   final String? damId;
   final String? sireId;
@@ -1004,6 +1018,7 @@ class Animal extends DataClass implements Insertable<Animal> {
       required this.breed,
       required this.earTag,
       required this.mark,
+      this.earMarks,
       this.birthDate,
       this.damId,
       this.sireId,
@@ -1028,6 +1043,9 @@ class Animal extends DataClass implements Insertable<Animal> {
     map['breed'] = Variable<String>(breed);
     map['ear_tag'] = Variable<String>(earTag);
     map['mark'] = Variable<String>(mark);
+    if (!nullToAbsent || earMarks != null) {
+      map['ear_marks'] = Variable<String>(earMarks);
+    }
     if (!nullToAbsent || birthDate != null) {
       map['birth_date'] = Variable<DateTime>(birthDate);
     }
@@ -1066,6 +1084,9 @@ class Animal extends DataClass implements Insertable<Animal> {
       breed: Value(breed),
       earTag: Value(earTag),
       mark: Value(mark),
+      earMarks: earMarks == null && nullToAbsent
+          ? const Value.absent()
+          : Value(earMarks),
       birthDate: birthDate == null && nullToAbsent
           ? const Value.absent()
           : Value(birthDate),
@@ -1102,6 +1123,7 @@ class Animal extends DataClass implements Insertable<Animal> {
       breed: serializer.fromJson<String>(json['breed']),
       earTag: serializer.fromJson<String>(json['earTag']),
       mark: serializer.fromJson<String>(json['mark']),
+      earMarks: serializer.fromJson<String?>(json['earMarks']),
       birthDate: serializer.fromJson<DateTime?>(json['birthDate']),
       damId: serializer.fromJson<String?>(json['damId']),
       sireId: serializer.fromJson<String?>(json['sireId']),
@@ -1127,6 +1149,7 @@ class Animal extends DataClass implements Insertable<Animal> {
       'breed': serializer.toJson<String>(breed),
       'earTag': serializer.toJson<String>(earTag),
       'mark': serializer.toJson<String>(mark),
+      'earMarks': serializer.toJson<String?>(earMarks),
       'birthDate': serializer.toJson<DateTime?>(birthDate),
       'damId': serializer.toJson<String?>(damId),
       'sireId': serializer.toJson<String?>(sireId),
@@ -1150,6 +1173,7 @@ class Animal extends DataClass implements Insertable<Animal> {
           String? breed,
           String? earTag,
           String? mark,
+          Value<String?> earMarks = const Value.absent(),
           Value<DateTime?> birthDate = const Value.absent(),
           Value<String?> damId = const Value.absent(),
           Value<String?> sireId = const Value.absent(),
@@ -1171,6 +1195,7 @@ class Animal extends DataClass implements Insertable<Animal> {
         breed: breed ?? this.breed,
         earTag: earTag ?? this.earTag,
         mark: mark ?? this.mark,
+        earMarks: earMarks.present ? earMarks.value : this.earMarks,
         birthDate: birthDate.present ? birthDate.value : this.birthDate,
         damId: damId.present ? damId.value : this.damId,
         sireId: sireId.present ? sireId.value : this.sireId,
@@ -1195,6 +1220,7 @@ class Animal extends DataClass implements Insertable<Animal> {
       breed: data.breed.present ? data.breed.value : this.breed,
       earTag: data.earTag.present ? data.earTag.value : this.earTag,
       mark: data.mark.present ? data.mark.value : this.mark,
+      earMarks: data.earMarks.present ? data.earMarks.value : this.earMarks,
       birthDate: data.birthDate.present ? data.birthDate.value : this.birthDate,
       damId: data.damId.present ? data.damId.value : this.damId,
       sireId: data.sireId.present ? data.sireId.value : this.sireId,
@@ -1220,6 +1246,7 @@ class Animal extends DataClass implements Insertable<Animal> {
           ..write('breed: $breed, ')
           ..write('earTag: $earTag, ')
           ..write('mark: $mark, ')
+          ..write('earMarks: $earMarks, ')
           ..write('birthDate: $birthDate, ')
           ..write('damId: $damId, ')
           ..write('sireId: $sireId, ')
@@ -1245,6 +1272,7 @@ class Animal extends DataClass implements Insertable<Animal> {
       breed,
       earTag,
       mark,
+      earMarks,
       birthDate,
       damId,
       sireId,
@@ -1268,6 +1296,7 @@ class Animal extends DataClass implements Insertable<Animal> {
           other.breed == this.breed &&
           other.earTag == this.earTag &&
           other.mark == this.mark &&
+          other.earMarks == this.earMarks &&
           other.birthDate == this.birthDate &&
           other.damId == this.damId &&
           other.sireId == this.sireId &&
@@ -1290,6 +1319,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
   final Value<String> breed;
   final Value<String> earTag;
   final Value<String> mark;
+  final Value<String?> earMarks;
   final Value<DateTime?> birthDate;
   final Value<String?> damId;
   final Value<String?> sireId;
@@ -1311,6 +1341,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     this.breed = const Value.absent(),
     this.earTag = const Value.absent(),
     this.mark = const Value.absent(),
+    this.earMarks = const Value.absent(),
     this.birthDate = const Value.absent(),
     this.damId = const Value.absent(),
     this.sireId = const Value.absent(),
@@ -1333,6 +1364,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     required String breed,
     required String earTag,
     this.mark = const Value.absent(),
+    this.earMarks = const Value.absent(),
     this.birthDate = const Value.absent(),
     this.damId = const Value.absent(),
     this.sireId = const Value.absent(),
@@ -1360,6 +1392,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     Expression<String>? breed,
     Expression<String>? earTag,
     Expression<String>? mark,
+    Expression<String>? earMarks,
     Expression<DateTime>? birthDate,
     Expression<String>? damId,
     Expression<String>? sireId,
@@ -1382,6 +1415,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
       if (breed != null) 'breed': breed,
       if (earTag != null) 'ear_tag': earTag,
       if (mark != null) 'mark': mark,
+      if (earMarks != null) 'ear_marks': earMarks,
       if (birthDate != null) 'birth_date': birthDate,
       if (damId != null) 'dam_id': damId,
       if (sireId != null) 'sire_id': sireId,
@@ -1406,6 +1440,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
       Value<String>? breed,
       Value<String>? earTag,
       Value<String>? mark,
+      Value<String?>? earMarks,
       Value<DateTime?>? birthDate,
       Value<String?>? damId,
       Value<String?>? sireId,
@@ -1427,6 +1462,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
       breed: breed ?? this.breed,
       earTag: earTag ?? this.earTag,
       mark: mark ?? this.mark,
+      earMarks: earMarks ?? this.earMarks,
       birthDate: birthDate ?? this.birthDate,
       damId: damId ?? this.damId,
       sireId: sireId ?? this.sireId,
@@ -1468,6 +1504,9 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     }
     if (mark.present) {
       map['mark'] = Variable<String>(mark.value);
+    }
+    if (earMarks.present) {
+      map['ear_marks'] = Variable<String>(earMarks.value);
     }
     if (birthDate.present) {
       map['birth_date'] = Variable<DateTime>(birthDate.value);
@@ -1519,6 +1558,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
           ..write('breed: $breed, ')
           ..write('earTag: $earTag, ')
           ..write('mark: $mark, ')
+          ..write('earMarks: $earMarks, ')
           ..write('birthDate: $birthDate, ')
           ..write('damId: $damId, ')
           ..write('sireId: $sireId, ')
@@ -7416,6 +7456,7 @@ typedef $$AnimalsTableCreateCompanionBuilder = AnimalsCompanion Function({
   required String breed,
   required String earTag,
   Value<String> mark,
+  Value<String?> earMarks,
   Value<DateTime?> birthDate,
   Value<String?> damId,
   Value<String?> sireId,
@@ -7438,6 +7479,7 @@ typedef $$AnimalsTableUpdateCompanionBuilder = AnimalsCompanion Function({
   Value<String> breed,
   Value<String> earTag,
   Value<String> mark,
+  Value<String?> earMarks,
   Value<DateTime?> birthDate,
   Value<String?> damId,
   Value<String?> sireId,
@@ -7585,6 +7627,9 @@ class $$AnimalsTableFilterComposer
 
   ColumnFilters<String> get mark => $composableBuilder(
       column: $table.mark, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get earMarks => $composableBuilder(
+      column: $table.earMarks, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get birthDate => $composableBuilder(
       column: $table.birthDate, builder: (column) => ColumnFilters(column));
@@ -7789,6 +7834,9 @@ class $$AnimalsTableOrderingComposer
   ColumnOrderings<String> get mark => $composableBuilder(
       column: $table.mark, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get earMarks => $composableBuilder(
+      column: $table.earMarks, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get birthDate => $composableBuilder(
       column: $table.birthDate, builder: (column) => ColumnOrderings(column));
 
@@ -7906,6 +7954,9 @@ class $$AnimalsTableAnnotationComposer
 
   GeneratedColumn<String> get mark =>
       $composableBuilder(column: $table.mark, builder: (column) => column);
+
+  GeneratedColumn<String> get earMarks =>
+      $composableBuilder(column: $table.earMarks, builder: (column) => column);
 
   GeneratedColumn<DateTime> get birthDate =>
       $composableBuilder(column: $table.birthDate, builder: (column) => column);
@@ -8117,6 +8168,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
             Value<String> breed = const Value.absent(),
             Value<String> earTag = const Value.absent(),
             Value<String> mark = const Value.absent(),
+            Value<String?> earMarks = const Value.absent(),
             Value<DateTime?> birthDate = const Value.absent(),
             Value<String?> damId = const Value.absent(),
             Value<String?> sireId = const Value.absent(),
@@ -8139,6 +8191,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
             breed: breed,
             earTag: earTag,
             mark: mark,
+            earMarks: earMarks,
             birthDate: birthDate,
             damId: damId,
             sireId: sireId,
@@ -8161,6 +8214,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
             required String breed,
             required String earTag,
             Value<String> mark = const Value.absent(),
+            Value<String?> earMarks = const Value.absent(),
             Value<DateTime?> birthDate = const Value.absent(),
             Value<String?> damId = const Value.absent(),
             Value<String?> sireId = const Value.absent(),
@@ -8183,6 +8237,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
             breed: breed,
             earTag: earTag,
             mark: mark,
+            earMarks: earMarks,
             birthDate: birthDate,
             damId: damId,
             sireId: sireId,

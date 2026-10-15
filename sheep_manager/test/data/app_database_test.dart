@@ -26,6 +26,45 @@ void main() {
     return 'dam-1';
   }
 
+  test('animalul vândut rămâne în istoricul mamei și poate reveni în turmă', () async {
+    final damId = await addMother();
+    await database.recordLambing(
+      lambingId: 'sold-lambing',
+      damId: damId,
+      occurredAt: DateTime(2026, 10, 12),
+      birthType: 'single',
+      notes: '',
+      lambs: const [LambBirth(name: 'Miel', sex: 'Mascul', breed: 'Țurcană', earTag: 'RO-2')],
+    );
+    final lambId = (await database.select(database.animals).get()).singleWhere((a) => a.earTag == 'RO-2').id;
+    await database.archiveAnimal(animalId: lambId, status: 'sold');
+    expect(await database.watchAnimals().first, hasLength(1));
+    final damHistory = await database.loadAnimalHistory(damId);
+    expect(damHistory.entries.where((e) => e.category == 'lambing'), isNotEmpty);
+    await database.archiveAnimal(animalId: lambId, status: 'active');
+    expect(await database.watchAnimals().first, hasLength(2));
+  });
+
+  test('ștergerea mielului păstrează fătarea în istoricul mamei', () async {
+    final damId = await addMother();
+    await database.recordLambing(
+      lambingId: 'del-lambing',
+      damId: damId,
+      occurredAt: DateTime(2026, 10, 12),
+      birthType: 'single',
+      notes: '',
+      lambs: const [LambBirth(name: 'Miel', sex: 'Mascul', breed: 'Țurcană', earTag: 'RO-9')],
+    );
+    final lambId = (await database.select(database.animals).get()).singleWhere((a) => a.earTag == 'RO-9').id;
+    await database.deleteAnimal(lambId);
+    expect(await database.watchAnimals(includeInactive: true).first, hasLength(1));
+    final history = await database.loadAnimalHistory(damId);
+    expect(history.entries.where((e) => e.category == 'lambing'), hasLength(1));
+    await database.deleteAnimal(damId);
+    expect(await database.watchAnimals(includeInactive: true).first, isEmpty);
+    expect(await database.watchLambings().first, isEmpty);
+  });
+
   test('fătarea creează toți mieii și păstrează relațiile în aceeași gospodărie', () async {
     final damId = await addMother();
 

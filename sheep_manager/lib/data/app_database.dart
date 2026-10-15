@@ -43,6 +43,7 @@ class Animals extends Table {
   TextColumn get breed => text().withLength(min: 1, max: 80)();
   TextColumn get earTag => text()();
   TextColumn get mark => text().withDefault(const Constant(''))();
+  TextColumn get earMarks => text().nullable()();
   DateTimeColumn get birthDate => dateTime().nullable()();
   TextColumn get damId => text().nullable().references(Animals, #id)();
   TextColumn get sireId => text().nullable().references(Animals, #id)();
@@ -240,7 +241,7 @@ class AppDatabase extends _$AppDatabase {
   static const _localFarmSettingKey = 'local_farm_id';
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -279,6 +280,10 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(weighings);
             await m.createTable(animalEvents);
             await m.createTable(syncQueue);
+          }
+          // De la v1 tabela animals se recreează deja cu coloana nouă.
+          if (from >= 2 && from < 3) {
+            await m.addColumn(animals, animals.earMarks);
           }
         },
         beforeOpen: (_) async {
@@ -448,6 +453,8 @@ class AppDatabase extends _$AppDatabase {
 
   String _eventTitle(String eventType) => switch (eventType) {
         'sold' => 'Vândut(ă)',
+        'slaughtered' => 'Sacrificat(ă)',
+        'active' => 'Revenit(ă) în turmă',
         'deceased' => 'Decedat(ă)',
         'transferred' => 'Transferat(ă)',
         'weaned' => 'Înțărcat(ă)',
@@ -703,11 +710,12 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  Future<void> archiveAnimal({required String animalId, required String status, String notes = ''}) async {
-    const allowedStatuses = {'sold', 'deceased', 'transferred'};
+  Future<void> archiveAnimal({required String animalId, required String status, String notes = '', DateTime? occurredAt}) async {
+    const allowedStatuses = {'active', 'sold', 'slaughtered', 'deceased', 'transferred'};
     if (!allowedStatuses.contains(status)) throw ArgumentError('Starea de ieșire nu este recunoscută.');
     final animal = await _requireAnimal(animalId);
     final now = DateTime.now();
+    final eventDate = occurredAt ?? now;
     final eventId = const Uuid().v4();
     await transaction(() async {
       await (update(animals)..where((row) => row.id.equals(animalId))).write(AnimalsCompanion(
@@ -719,7 +727,7 @@ class AppDatabase extends _$AppDatabase {
         id: eventId,
         farmId: animal.farmId,
         animalId: animalId,
-        occurredAt: now,
+        occurredAt: eventDate,
         eventType: status,
         notes: Value(notes.trim()),
         createdAt: Value(now),
@@ -730,7 +738,7 @@ class AppDatabase extends _$AppDatabase {
         entityType: 'animal_event',
         entityId: eventId,
         operation: 'upsert',
-        payload: {'id': eventId, 'farmId': animal.farmId, 'animalId': animalId, 'occurredAt': now.toUtc().toIso8601String(), 'eventType': status, 'notes': notes.trim()},
+        payload: {'id': eventId, 'farmId': animal.farmId, 'animalId': animalId, 'occurredAt': eventDate.toUtc().toIso8601String(), 'eventType': status, 'notes': notes.trim()},
         createdAt: now,
       );
       await _queueSync(
@@ -741,6 +749,40 @@ class AppDatabase extends _$AppDatabase {
         payload: {'id': animalId, 'farmId': animal.farmId, 'status': status, 'updatedAt': now.toUtc().toIso8601String()},
         createdAt: now,
       );
+    });
+  }
+
+  /// Ștergere „moale”: rândurile primesc `deletedAt`, deci ștergerea se sincronizează pe toate dispozitivele.
+  /// Fătarea în care animalul este miel rămâne în istoricul mamei.
+  Future<void> deleteAnimal(String animalId) async {
+    final animal = await _requireAnimal(animalId);
+    final now = DateTime.now();
+    Future<void> queue(String type, Iterable<String> ids) async {
+      for (final id in ids) {
+        await _queueSync(farmId: animal.farmId, entityType: type, entityId: id, operation: 'upsert', payload: {'id': id, 'deletedAt': now.toUtc().toIso8601String()}, createdAt: now);
+      }
+    }
+
+    await transaction(() async {
+      final treatmentIds = (await (select(treatments)..where((r) => r.animalId.equals(animalId) & r.deletedAt.isNull())).get()).map((r) => r.id).toList();
+      await (update(treatments)..where((r) => r.id.isIn(treatmentIds))).write(TreatmentsCompanion(deletedAt: Value(now), updatedAt: Value(now), syncState: const Value('pending')));
+      final weighingIds = (await (select(weighings)..where((r) => r.animalId.equals(animalId) & r.deletedAt.isNull())).get()).map((r) => r.id).toList();
+      await (update(weighings)..where((r) => r.id.isIn(weighingIds))).write(WeighingsCompanion(deletedAt: Value(now), updatedAt: Value(now), syncState: const Value('pending')));
+      final eventIds = (await (select(animalEvents)..where((r) => r.animalId.equals(animalId) & r.deletedAt.isNull())).get()).map((r) => r.id).toList();
+      await (update(animalEvents)..where((r) => r.id.isIn(eventIds))).write(AnimalEventsCompanion(deletedAt: Value(now), updatedAt: Value(now), syncState: const Value('pending')));
+      final breedingIds = (await (select(breedingEvents)..where((r) => (r.damId.equals(animalId) | r.sireId.equals(animalId)) & r.deletedAt.isNull())).get()).map((r) => r.id).toList();
+      await (update(breedingEvents)..where((r) => r.id.isIn(breedingIds))).write(BreedingEventsCompanion(deletedAt: Value(now), updatedAt: Value(now), syncState: const Value('pending')));
+      final lambingIds = (await (select(lambings)..where((r) => r.damId.equals(animalId) & r.deletedAt.isNull())).get()).map((r) => r.id).toList();
+      await (update(lambingLambs)..where((r) => r.lambingId.isIn(lambingIds))).write(LambingLambsCompanion(deletedAt: Value(now), updatedAt: Value(now), syncState: const Value('pending')));
+      await (update(lambings)..where((r) => r.id.isIn(lambingIds))).write(LambingsCompanion(deletedAt: Value(now), updatedAt: Value(now), syncState: const Value('pending')));
+      await (update(animals)..where((r) => r.id.equals(animalId))).write(AnimalsCompanion(deletedAt: Value(now), updatedAt: Value(now), syncState: const Value('pending')));
+
+      await queue('treatment', treatmentIds);
+      await queue('weighing', weighingIds);
+      await queue('animal_event', eventIds);
+      await queue('breeding_event', breedingIds);
+      await queue('lambing', lambingIds);
+      await queue('animal', [animalId]);
     });
   }
 
@@ -757,6 +799,7 @@ class AppDatabase extends _$AppDatabase {
     required String breed,
     required String earTag,
     required String mark,
+    String? earMarks,
     DateTime? birthDate,
   }) async {
     final now = DateTime.now();
@@ -770,6 +813,7 @@ class AppDatabase extends _$AppDatabase {
         breed: breed.trim(),
         earTag: earTag.trim(),
         mark: Value(mark.trim()),
+        earMarks: Value(earMarks),
         birthDate: Value(birthDate),
         createdAt: Value(now),
         updatedAt: Value(now),
@@ -787,6 +831,7 @@ class AppDatabase extends _$AppDatabase {
           'breed': breed.trim(),
           'earTag': earTag.trim(),
           'mark': mark.trim(),
+          'earMarks': earMarks,
           'birthDate': birthDate?.toUtc().toIso8601String(),
           'createdAt': now.toUtc().toIso8601String(),
           'updatedAt': now.toUtc().toIso8601String(),
@@ -803,6 +848,7 @@ class AppDatabase extends _$AppDatabase {
     required String breed,
     required String earTag,
     required String mark,
+    String? earMarks,
     DateTime? birthDate,
   }) async {
     final animal = await _requireAnimal(id);
@@ -817,6 +863,7 @@ class AppDatabase extends _$AppDatabase {
         breed: Value(breed.trim()),
         earTag: Value(earTag.trim()),
         mark: Value(mark.trim()),
+        earMarks: Value(earMarks),
         birthDate: Value(birthDate),
         updatedAt: Value(now),
         syncState: const Value('pending'),
@@ -834,6 +881,7 @@ class AppDatabase extends _$AppDatabase {
           'breed': breed.trim(),
           'earTag': earTag.trim(),
           'mark': mark.trim(),
+          'earMarks': earMarks,
           'birthDate': birthDate?.toUtc().toIso8601String(),
           'updatedAt': now.toUtc().toIso8601String(),
         },
