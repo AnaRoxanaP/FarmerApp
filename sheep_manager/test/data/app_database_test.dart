@@ -26,6 +26,48 @@ void main() {
     return 'dam-1';
   }
 
+  test('fătarea cu miel mort nu creează animal, iar mielul adoptat trece la altă mamă', () async {
+    final damId = await addMother();
+    await database.addAnimal(id: 'dam-2', name: 'Oaia B', sex: 'Femelă', breed: 'Țurcană', earTag: 'RO-002', mark: '');
+    await database.recordLambing(
+      lambingId: 'dead',
+      damId: 'dam-2',
+      occurredAt: DateTime(2026, 2, 10),
+      birthType: 'single',
+      notes: '',
+      lambs: const [],
+      deadLambs: 1,
+    );
+    expect(await database.select(database.animals).get(), hasLength(2));
+
+    await database.recordLambing(
+      lambingId: 'twins',
+      damId: damId,
+      occurredAt: DateTime(2026, 2, 10),
+      birthType: 'twins',
+      notes: '',
+      lambs: const [
+        LambBirth(name: 'Gemenul 1', sex: 'Femelă', breed: 'Țurcană', earTag: 'RO-11'),
+        LambBirth(name: 'Gemenul 2', sex: 'Mascul', breed: 'Țurcană', earTag: 'RO-12'),
+      ],
+    );
+    final twin = (await database.select(database.animals).get()).singleWhere((a) => a.earTag == 'RO-12');
+    await database.adoptLamb(lambId: twin.id, adoptiveDamId: 'dam-2');
+
+    final adopted = (await database.select(database.animals).get()).singleWhere((a) => a.id == twin.id);
+    expect(adopted.damId, 'dam-2');
+    expect(adopted.biologicalDamId, damId);
+    final links = await (database.select(database.lambingLambs)..where((l) => l.animalId.equals(twin.id))).get();
+    final adoptionLambing = await (database.select(database.lambings)..where((l) => l.id.equals(links.single.lambingId))).getSingle();
+    expect(adoptionLambing.damId, 'dam-2');
+    expect(adoptionLambing.kind, 'adoption');
+
+    final lambHistory = await database.loadAnimalHistory(twin.id);
+    expect(lambHistory.entries.single.detail, allOf(contains('Mama adoptivă: Oaia B'), contains('Mama biologică: Mioara')));
+    final bioHistory = await database.loadAnimalHistory(damId);
+    expect(bioHistory.entries.firstWhere((e) => e.category == 'lambing').detail, contains('adoptat de altă oaie'));
+  });
+
   test('animalul vândut rămâne în istoricul mamei și poate reveni în turmă', () async {
     final damId = await addMother();
     await database.recordLambing(

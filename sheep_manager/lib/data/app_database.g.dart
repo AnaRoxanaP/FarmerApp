@@ -743,6 +743,12 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
       requiredDuringInsert: false,
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('REFERENCES animals (id)'));
+  static const VerificationMeta _biologicalDamIdMeta =
+      const VerificationMeta('biologicalDamId');
+  @override
+  late final GeneratedColumn<String> biologicalDamId = GeneratedColumn<String>(
+      'biological_dam_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _originMeta = const VerificationMeta('origin');
   @override
   late final GeneratedColumn<String> origin = GeneratedColumn<String>(
@@ -813,6 +819,7 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
         birthDate,
         damId,
         sireId,
+        biologicalDamId,
         origin,
         createdAt,
         updatedAt,
@@ -893,6 +900,12 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
       context.handle(_sireIdMeta,
           sireId.isAcceptableOrUnknown(data['sire_id']!, _sireIdMeta));
     }
+    if (data.containsKey('biological_dam_id')) {
+      context.handle(
+          _biologicalDamIdMeta,
+          biologicalDamId.isAcceptableOrUnknown(
+              data['biological_dam_id']!, _biologicalDamIdMeta));
+    }
     if (data.containsKey('origin')) {
       context.handle(_originMeta,
           origin.isAcceptableOrUnknown(data['origin']!, _originMeta));
@@ -958,6 +971,8 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
           .read(DriftSqlType.string, data['${effectivePrefix}dam_id']),
       sireId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}sire_id']),
+      biologicalDamId: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}biological_dam_id']),
       origin: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}origin'])!,
       createdAt: attachedDatabase.typeMapping
@@ -996,6 +1011,7 @@ class Animal extends DataClass implements Insertable<Animal> {
   final DateTime? birthDate;
   final String? damId;
   final String? sireId;
+  final String? biologicalDamId;
   final String origin;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -1017,6 +1033,7 @@ class Animal extends DataClass implements Insertable<Animal> {
       this.birthDate,
       this.damId,
       this.sireId,
+      this.biologicalDamId,
       required this.origin,
       required this.createdAt,
       required this.updatedAt,
@@ -1049,6 +1066,9 @@ class Animal extends DataClass implements Insertable<Animal> {
     }
     if (!nullToAbsent || sireId != null) {
       map['sire_id'] = Variable<String>(sireId);
+    }
+    if (!nullToAbsent || biologicalDamId != null) {
+      map['biological_dam_id'] = Variable<String>(biologicalDamId);
     }
     map['origin'] = Variable<String>(origin);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -1089,6 +1109,9 @@ class Animal extends DataClass implements Insertable<Animal> {
           damId == null && nullToAbsent ? const Value.absent() : Value(damId),
       sireId:
           sireId == null && nullToAbsent ? const Value.absent() : Value(sireId),
+      biologicalDamId: biologicalDamId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(biologicalDamId),
       origin: Value(origin),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -1122,6 +1145,7 @@ class Animal extends DataClass implements Insertable<Animal> {
       birthDate: serializer.fromJson<DateTime?>(json['birthDate']),
       damId: serializer.fromJson<String?>(json['damId']),
       sireId: serializer.fromJson<String?>(json['sireId']),
+      biologicalDamId: serializer.fromJson<String?>(json['biologicalDamId']),
       origin: serializer.fromJson<String>(json['origin']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -1148,6 +1172,7 @@ class Animal extends DataClass implements Insertable<Animal> {
       'birthDate': serializer.toJson<DateTime?>(birthDate),
       'damId': serializer.toJson<String?>(damId),
       'sireId': serializer.toJson<String?>(sireId),
+      'biologicalDamId': serializer.toJson<String?>(biologicalDamId),
       'origin': serializer.toJson<String>(origin),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -1172,6 +1197,7 @@ class Animal extends DataClass implements Insertable<Animal> {
           Value<DateTime?> birthDate = const Value.absent(),
           Value<String?> damId = const Value.absent(),
           Value<String?> sireId = const Value.absent(),
+          Value<String?> biologicalDamId = const Value.absent(),
           String? origin,
           DateTime? createdAt,
           DateTime? updatedAt,
@@ -1194,6 +1220,9 @@ class Animal extends DataClass implements Insertable<Animal> {
         birthDate: birthDate.present ? birthDate.value : this.birthDate,
         damId: damId.present ? damId.value : this.damId,
         sireId: sireId.present ? sireId.value : this.sireId,
+        biologicalDamId: biologicalDamId.present
+            ? biologicalDamId.value
+            : this.biologicalDamId,
         origin: origin ?? this.origin,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
@@ -1219,6 +1248,9 @@ class Animal extends DataClass implements Insertable<Animal> {
       birthDate: data.birthDate.present ? data.birthDate.value : this.birthDate,
       damId: data.damId.present ? data.damId.value : this.damId,
       sireId: data.sireId.present ? data.sireId.value : this.sireId,
+      biologicalDamId: data.biologicalDamId.present
+          ? data.biologicalDamId.value
+          : this.biologicalDamId,
       origin: data.origin.present ? data.origin.value : this.origin,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -1245,6 +1277,7 @@ class Animal extends DataClass implements Insertable<Animal> {
           ..write('birthDate: $birthDate, ')
           ..write('damId: $damId, ')
           ..write('sireId: $sireId, ')
+          ..write('biologicalDamId: $biologicalDamId, ')
           ..write('origin: $origin, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -1258,27 +1291,29 @@ class Animal extends DataClass implements Insertable<Animal> {
   }
 
   @override
-  int get hashCode => Object.hash(
-      id,
-      farmId,
-      name,
-      internalNumber,
-      sex,
-      breed,
-      earTag,
-      mark,
-      earMarks,
-      birthDate,
-      damId,
-      sireId,
-      origin,
-      createdAt,
-      updatedAt,
-      status,
-      deletedAt,
-      syncState,
-      createdBy,
-      updatedBy);
+  int get hashCode => Object.hashAll([
+        id,
+        farmId,
+        name,
+        internalNumber,
+        sex,
+        breed,
+        earTag,
+        mark,
+        earMarks,
+        birthDate,
+        damId,
+        sireId,
+        biologicalDamId,
+        origin,
+        createdAt,
+        updatedAt,
+        status,
+        deletedAt,
+        syncState,
+        createdBy,
+        updatedBy
+      ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1295,6 +1330,7 @@ class Animal extends DataClass implements Insertable<Animal> {
           other.birthDate == this.birthDate &&
           other.damId == this.damId &&
           other.sireId == this.sireId &&
+          other.biologicalDamId == this.biologicalDamId &&
           other.origin == this.origin &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
@@ -1318,6 +1354,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
   final Value<DateTime?> birthDate;
   final Value<String?> damId;
   final Value<String?> sireId;
+  final Value<String?> biologicalDamId;
   final Value<String> origin;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -1340,6 +1377,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     this.birthDate = const Value.absent(),
     this.damId = const Value.absent(),
     this.sireId = const Value.absent(),
+    this.biologicalDamId = const Value.absent(),
     this.origin = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -1363,6 +1401,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     this.birthDate = const Value.absent(),
     this.damId = const Value.absent(),
     this.sireId = const Value.absent(),
+    this.biologicalDamId = const Value.absent(),
     this.origin = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -1391,6 +1430,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     Expression<DateTime>? birthDate,
     Expression<String>? damId,
     Expression<String>? sireId,
+    Expression<String>? biologicalDamId,
     Expression<String>? origin,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -1414,6 +1454,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
       if (birthDate != null) 'birth_date': birthDate,
       if (damId != null) 'dam_id': damId,
       if (sireId != null) 'sire_id': sireId,
+      if (biologicalDamId != null) 'biological_dam_id': biologicalDamId,
       if (origin != null) 'origin': origin,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -1439,6 +1480,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
       Value<DateTime?>? birthDate,
       Value<String?>? damId,
       Value<String?>? sireId,
+      Value<String?>? biologicalDamId,
       Value<String>? origin,
       Value<DateTime>? createdAt,
       Value<DateTime>? updatedAt,
@@ -1461,6 +1503,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
       birthDate: birthDate ?? this.birthDate,
       damId: damId ?? this.damId,
       sireId: sireId ?? this.sireId,
+      biologicalDamId: biologicalDamId ?? this.biologicalDamId,
       origin: origin ?? this.origin,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -1512,6 +1555,9 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     if (sireId.present) {
       map['sire_id'] = Variable<String>(sireId.value);
     }
+    if (biologicalDamId.present) {
+      map['biological_dam_id'] = Variable<String>(biologicalDamId.value);
+    }
     if (origin.present) {
       map['origin'] = Variable<String>(origin.value);
     }
@@ -1557,6 +1603,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
           ..write('birthDate: $birthDate, ')
           ..write('damId: $damId, ')
           ..write('sireId: $sireId, ')
+          ..write('biologicalDamId: $biologicalDamId, ')
           ..write('origin: $origin, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -1626,6 +1673,17 @@ class $LambingsTable extends Lambings with TableInfo<$LambingsTable, Lambing> {
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       defaultValue: const Constant(''));
+  static const VerificationMeta _deadLambsMeta =
+      const VerificationMeta('deadLambs');
+  @override
+  late final GeneratedColumn<int> deadLambs = GeneratedColumn<int>(
+      'dead_lambs', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+      'kind', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -1677,6 +1735,8 @@ class $LambingsTable extends Lambings with TableInfo<$LambingsTable, Lambing> {
         occurredAt,
         birthType,
         notes,
+        deadLambs,
+        kind,
         createdAt,
         updatedAt,
         deletedAt,
@@ -1731,6 +1791,14 @@ class $LambingsTable extends Lambings with TableInfo<$LambingsTable, Lambing> {
       context.handle(
           _notesMeta, notes.isAcceptableOrUnknown(data['notes']!, _notesMeta));
     }
+    if (data.containsKey('dead_lambs')) {
+      context.handle(_deadLambsMeta,
+          deadLambs.isAcceptableOrUnknown(data['dead_lambs']!, _deadLambsMeta));
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+          _kindMeta, kind.isAcceptableOrUnknown(data['kind']!, _kindMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -1778,6 +1846,10 @@ class $LambingsTable extends Lambings with TableInfo<$LambingsTable, Lambing> {
           .read(DriftSqlType.string, data['${effectivePrefix}birth_type'])!,
       notes: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}notes'])!,
+      deadLambs: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}dead_lambs']),
+      kind: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}kind']),
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       updatedAt: attachedDatabase.typeMapping
@@ -1807,6 +1879,8 @@ class Lambing extends DataClass implements Insertable<Lambing> {
   final DateTime occurredAt;
   final String birthType;
   final String notes;
+  final int? deadLambs;
+  final String? kind;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
@@ -1821,6 +1895,8 @@ class Lambing extends DataClass implements Insertable<Lambing> {
       required this.occurredAt,
       required this.birthType,
       required this.notes,
+      this.deadLambs,
+      this.kind,
       required this.createdAt,
       required this.updatedAt,
       this.deletedAt,
@@ -1839,6 +1915,12 @@ class Lambing extends DataClass implements Insertable<Lambing> {
     map['occurred_at'] = Variable<DateTime>(occurredAt);
     map['birth_type'] = Variable<String>(birthType);
     map['notes'] = Variable<String>(notes);
+    if (!nullToAbsent || deadLambs != null) {
+      map['dead_lambs'] = Variable<int>(deadLambs);
+    }
+    if (!nullToAbsent || kind != null) {
+      map['kind'] = Variable<String>(kind);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
@@ -1864,6 +1946,10 @@ class Lambing extends DataClass implements Insertable<Lambing> {
       occurredAt: Value(occurredAt),
       birthType: Value(birthType),
       notes: Value(notes),
+      deadLambs: deadLambs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deadLambs),
+      kind: kind == null && nullToAbsent ? const Value.absent() : Value(kind),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
@@ -1890,6 +1976,8 @@ class Lambing extends DataClass implements Insertable<Lambing> {
       occurredAt: serializer.fromJson<DateTime>(json['occurredAt']),
       birthType: serializer.fromJson<String>(json['birthType']),
       notes: serializer.fromJson<String>(json['notes']),
+      deadLambs: serializer.fromJson<int?>(json['deadLambs']),
+      kind: serializer.fromJson<String?>(json['kind']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
@@ -1909,6 +1997,8 @@ class Lambing extends DataClass implements Insertable<Lambing> {
       'occurredAt': serializer.toJson<DateTime>(occurredAt),
       'birthType': serializer.toJson<String>(birthType),
       'notes': serializer.toJson<String>(notes),
+      'deadLambs': serializer.toJson<int?>(deadLambs),
+      'kind': serializer.toJson<String?>(kind),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
@@ -1926,6 +2016,8 @@ class Lambing extends DataClass implements Insertable<Lambing> {
           DateTime? occurredAt,
           String? birthType,
           String? notes,
+          Value<int?> deadLambs = const Value.absent(),
+          Value<String?> kind = const Value.absent(),
           DateTime? createdAt,
           DateTime? updatedAt,
           Value<DateTime?> deletedAt = const Value.absent(),
@@ -1940,6 +2032,8 @@ class Lambing extends DataClass implements Insertable<Lambing> {
         occurredAt: occurredAt ?? this.occurredAt,
         birthType: birthType ?? this.birthType,
         notes: notes ?? this.notes,
+        deadLambs: deadLambs.present ? deadLambs.value : this.deadLambs,
+        kind: kind.present ? kind.value : this.kind,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
         deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
@@ -1957,6 +2051,8 @@ class Lambing extends DataClass implements Insertable<Lambing> {
           data.occurredAt.present ? data.occurredAt.value : this.occurredAt,
       birthType: data.birthType.present ? data.birthType.value : this.birthType,
       notes: data.notes.present ? data.notes.value : this.notes,
+      deadLambs: data.deadLambs.present ? data.deadLambs.value : this.deadLambs,
+      kind: data.kind.present ? data.kind.value : this.kind,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -1976,6 +2072,8 @@ class Lambing extends DataClass implements Insertable<Lambing> {
           ..write('occurredAt: $occurredAt, ')
           ..write('birthType: $birthType, ')
           ..write('notes: $notes, ')
+          ..write('deadLambs: $deadLambs, ')
+          ..write('kind: $kind, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -1995,6 +2093,8 @@ class Lambing extends DataClass implements Insertable<Lambing> {
       occurredAt,
       birthType,
       notes,
+      deadLambs,
+      kind,
       createdAt,
       updatedAt,
       deletedAt,
@@ -2012,6 +2112,8 @@ class Lambing extends DataClass implements Insertable<Lambing> {
           other.occurredAt == this.occurredAt &&
           other.birthType == this.birthType &&
           other.notes == this.notes &&
+          other.deadLambs == this.deadLambs &&
+          other.kind == this.kind &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
@@ -2028,6 +2130,8 @@ class LambingsCompanion extends UpdateCompanion<Lambing> {
   final Value<DateTime> occurredAt;
   final Value<String> birthType;
   final Value<String> notes;
+  final Value<int?> deadLambs;
+  final Value<String?> kind;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
@@ -2043,6 +2147,8 @@ class LambingsCompanion extends UpdateCompanion<Lambing> {
     this.occurredAt = const Value.absent(),
     this.birthType = const Value.absent(),
     this.notes = const Value.absent(),
+    this.deadLambs = const Value.absent(),
+    this.kind = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -2059,6 +2165,8 @@ class LambingsCompanion extends UpdateCompanion<Lambing> {
     required DateTime occurredAt,
     this.birthType = const Value.absent(),
     this.notes = const Value.absent(),
+    this.deadLambs = const Value.absent(),
+    this.kind = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -2078,6 +2186,8 @@ class LambingsCompanion extends UpdateCompanion<Lambing> {
     Expression<DateTime>? occurredAt,
     Expression<String>? birthType,
     Expression<String>? notes,
+    Expression<int>? deadLambs,
+    Expression<String>? kind,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
@@ -2094,6 +2204,8 @@ class LambingsCompanion extends UpdateCompanion<Lambing> {
       if (occurredAt != null) 'occurred_at': occurredAt,
       if (birthType != null) 'birth_type': birthType,
       if (notes != null) 'notes': notes,
+      if (deadLambs != null) 'dead_lambs': deadLambs,
+      if (kind != null) 'kind': kind,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -2112,6 +2224,8 @@ class LambingsCompanion extends UpdateCompanion<Lambing> {
       Value<DateTime>? occurredAt,
       Value<String>? birthType,
       Value<String>? notes,
+      Value<int?>? deadLambs,
+      Value<String?>? kind,
       Value<DateTime>? createdAt,
       Value<DateTime>? updatedAt,
       Value<DateTime?>? deletedAt,
@@ -2127,6 +2241,8 @@ class LambingsCompanion extends UpdateCompanion<Lambing> {
       occurredAt: occurredAt ?? this.occurredAt,
       birthType: birthType ?? this.birthType,
       notes: notes ?? this.notes,
+      deadLambs: deadLambs ?? this.deadLambs,
+      kind: kind ?? this.kind,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -2160,6 +2276,12 @@ class LambingsCompanion extends UpdateCompanion<Lambing> {
     }
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
+    }
+    if (deadLambs.present) {
+      map['dead_lambs'] = Variable<int>(deadLambs.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
@@ -2195,6 +2317,8 @@ class LambingsCompanion extends UpdateCompanion<Lambing> {
           ..write('occurredAt: $occurredAt, ')
           ..write('birthType: $birthType, ')
           ..write('notes: $notes, ')
+          ..write('deadLambs: $deadLambs, ')
+          ..write('kind: $kind, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -7455,6 +7579,7 @@ typedef $$AnimalsTableCreateCompanionBuilder = AnimalsCompanion Function({
   Value<DateTime?> birthDate,
   Value<String?> damId,
   Value<String?> sireId,
+  Value<String?> biologicalDamId,
   Value<String> origin,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
@@ -7478,6 +7603,7 @@ typedef $$AnimalsTableUpdateCompanionBuilder = AnimalsCompanion Function({
   Value<DateTime?> birthDate,
   Value<String?> damId,
   Value<String?> sireId,
+  Value<String?> biologicalDamId,
   Value<String> origin,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
@@ -7628,6 +7754,10 @@ class $$AnimalsTableFilterComposer
 
   ColumnFilters<DateTime> get birthDate => $composableBuilder(
       column: $table.birthDate, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get biologicalDamId => $composableBuilder(
+      column: $table.biologicalDamId,
+      builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get origin => $composableBuilder(
       column: $table.origin, builder: (column) => ColumnFilters(column));
@@ -7835,6 +7965,10 @@ class $$AnimalsTableOrderingComposer
   ColumnOrderings<DateTime> get birthDate => $composableBuilder(
       column: $table.birthDate, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get biologicalDamId => $composableBuilder(
+      column: $table.biologicalDamId,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get origin => $composableBuilder(
       column: $table.origin, builder: (column) => ColumnOrderings(column));
 
@@ -7955,6 +8089,9 @@ class $$AnimalsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get birthDate =>
       $composableBuilder(column: $table.birthDate, builder: (column) => column);
+
+  GeneratedColumn<String> get biologicalDamId => $composableBuilder(
+      column: $table.biologicalDamId, builder: (column) => column);
 
   GeneratedColumn<String> get origin =>
       $composableBuilder(column: $table.origin, builder: (column) => column);
@@ -8167,6 +8304,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
             Value<DateTime?> birthDate = const Value.absent(),
             Value<String?> damId = const Value.absent(),
             Value<String?> sireId = const Value.absent(),
+            Value<String?> biologicalDamId = const Value.absent(),
             Value<String> origin = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -8190,6 +8328,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
             birthDate: birthDate,
             damId: damId,
             sireId: sireId,
+            biologicalDamId: biologicalDamId,
             origin: origin,
             createdAt: createdAt,
             updatedAt: updatedAt,
@@ -8213,6 +8352,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
             Value<DateTime?> birthDate = const Value.absent(),
             Value<String?> damId = const Value.absent(),
             Value<String?> sireId = const Value.absent(),
+            Value<String?> biologicalDamId = const Value.absent(),
             Value<String> origin = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -8236,6 +8376,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
             birthDate: birthDate,
             damId: damId,
             sireId: sireId,
+            biologicalDamId: biologicalDamId,
             origin: origin,
             createdAt: createdAt,
             updatedAt: updatedAt,
@@ -8397,6 +8538,8 @@ typedef $$LambingsTableCreateCompanionBuilder = LambingsCompanion Function({
   required DateTime occurredAt,
   Value<String> birthType,
   Value<String> notes,
+  Value<int?> deadLambs,
+  Value<String?> kind,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
   Value<DateTime?> deletedAt,
@@ -8413,6 +8556,8 @@ typedef $$LambingsTableUpdateCompanionBuilder = LambingsCompanion Function({
   Value<DateTime> occurredAt,
   Value<String> birthType,
   Value<String> notes,
+  Value<int?> deadLambs,
+  Value<String?> kind,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
   Value<DateTime?> deletedAt,
@@ -8503,6 +8648,12 @@ class $$LambingsTableFilterComposer
 
   ColumnFilters<String> get notes => $composableBuilder(
       column: $table.notes, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get deadLambs => $composableBuilder(
+      column: $table.deadLambs, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get kind => $composableBuilder(
+      column: $table.kind, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -8625,6 +8776,12 @@ class $$LambingsTableOrderingComposer
   ColumnOrderings<String> get notes => $composableBuilder(
       column: $table.notes, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get deadLambs => $composableBuilder(
+      column: $table.deadLambs, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+      column: $table.kind, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 
@@ -8724,6 +8881,12 @@ class $$LambingsTableAnnotationComposer
 
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<int> get deadLambs =>
+      $composableBuilder(column: $table.deadLambs, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -8856,6 +9019,8 @@ class $$LambingsTableTableManager extends RootTableManager<
             Value<DateTime> occurredAt = const Value.absent(),
             Value<String> birthType = const Value.absent(),
             Value<String> notes = const Value.absent(),
+            Value<int?> deadLambs = const Value.absent(),
+            Value<String?> kind = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<DateTime?> deletedAt = const Value.absent(),
@@ -8872,6 +9037,8 @@ class $$LambingsTableTableManager extends RootTableManager<
             occurredAt: occurredAt,
             birthType: birthType,
             notes: notes,
+            deadLambs: deadLambs,
+            kind: kind,
             createdAt: createdAt,
             updatedAt: updatedAt,
             deletedAt: deletedAt,
@@ -8888,6 +9055,8 @@ class $$LambingsTableTableManager extends RootTableManager<
             required DateTime occurredAt,
             Value<String> birthType = const Value.absent(),
             Value<String> notes = const Value.absent(),
+            Value<int?> deadLambs = const Value.absent(),
+            Value<String?> kind = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<DateTime?> deletedAt = const Value.absent(),
@@ -8904,6 +9073,8 @@ class $$LambingsTableTableManager extends RootTableManager<
             occurredAt: occurredAt,
             birthType: birthType,
             notes: notes,
+            deadLambs: deadLambs,
+            kind: kind,
             createdAt: createdAt,
             updatedAt: updatedAt,
             deletedAt: deletedAt,

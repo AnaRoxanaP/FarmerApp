@@ -69,7 +69,8 @@ void main() {
   test('fătările de la sfârșitul anului intră în seria anului următor', () {
     expect(lambingSeriesYear(DateTime(2025, 11, 30)), 2026);
     expect(lambingSeriesYear(DateTime(2026, 2, 1)), 2026);
-    expect(lambingSeriesYear(DateTime(2025, 10, 31)), 2025);
+    expect(lambingSeriesYear(DateTime(2025, 10, 1)), 2026);
+    expect(lambingSeriesYear(DateTime(2025, 9, 30)), 2025);
   });
 
   testWidgets('registrul permite schimbarea seriei de fătări', (tester) async {
@@ -77,7 +78,7 @@ void main() {
     for (final record in [
       ('late-2025', DateTime(2025, 11, 20), 'Miel noiembrie', 'RO-912'),
       ('early-2026', DateTime(2026, 2, 10), 'Miel februarie', 'RO-913'),
-      ('october-2025', DateTime(2025, 10, 20), 'Miel octombrie', 'RO-914'),
+      ('october-2025', DateTime(2025, 9, 20), 'Miel septembrie', 'RO-914'),
     ]) {
       await database.recordLambing(
         lambingId: record.$1,
@@ -92,16 +93,21 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: LambingsScreen(database: database))));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byType(DropdownButtonFormField<int>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Fătări 2026').last);
+    await tester.pumpAndSettle();
+
     expect(find.text('Miel noiembrie · RO-912'), findsOneWidget);
     expect(find.text('Miel februarie · RO-913'), findsOneWidget);
-    expect(find.text('Miel octombrie · RO-914'), findsNothing);
+    expect(find.text('Miel septembrie · RO-914'), findsNothing);
 
     await tester.tap(find.byType(DropdownButtonFormField<int>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Fătări 2025').last);
     await tester.pumpAndSettle();
 
-    expect(find.text('Miel octombrie · RO-914'), findsOneWidget);
+    expect(find.text('Miel septembrie · RO-914'), findsOneWidget);
     expect(find.text('Miel noiembrie · RO-912'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());

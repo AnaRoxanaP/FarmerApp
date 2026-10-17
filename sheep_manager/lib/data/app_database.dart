@@ -47,6 +47,8 @@ class Animals extends Table {
   DateTimeColumn get birthDate => dateTime().nullable()();
   TextColumn get damId => text().nullable().references(Animals, #id)();
   TextColumn get sireId => text().nullable().references(Animals, #id)();
+  // Mama care a fătat mielul, când acesta a fost adoptat de altă oaie.
+  TextColumn get biologicalDamId => text().nullable()();
   TextColumn get origin => text().withDefault(const Constant('born'))();
   DateTimeColumn get createdAt => dateTime().clientDefault(DateTime.now)();
   DateTimeColumn get updatedAt => dateTime().clientDefault(DateTime.now)();
@@ -71,6 +73,10 @@ class Lambings extends Table {
   DateTimeColumn get occurredAt => dateTime()();
   TextColumn get birthType => text().withDefault(const Constant('unknown'))();
   TextColumn get notes => text().withDefault(const Constant(''))();
+  // Miei născuți morți, fără crotaliu; null înseamnă niciunul.
+  IntColumn get deadLambs => integer().nullable()();
+  // null sau 'birth' pentru fătare; 'adoption' când oaia a adoptat un miel.
+  TextColumn get kind => text().nullable()();
   DateTimeColumn get createdAt => dateTime().clientDefault(DateTime.now)();
   DateTimeColumn get updatedAt => dateTime().clientDefault(DateTime.now)();
   DateTimeColumn get deletedAt => dateTime().nullable()();
@@ -238,7 +244,7 @@ class AppDatabase extends _$AppDatabase {
   static const _localFarmSettingKey = 'local_farm_id';
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -348,11 +354,22 @@ class AppDatabase extends _$AppDatabase {
             }
             await _createAnimalUniqueIndexes();
           }
+          if (from < 5) {
+            await _addColumnIfMissing('lambings', 'dead_lambs', 'INTEGER');
+            await _addColumnIfMissing('lambings', 'kind', 'TEXT');
+            await _addColumnIfMissing('animals', 'biological_dam_id', 'TEXT');
+          }
         },
         beforeOpen: (_) async {
           await customStatement('PRAGMA foreign_keys = ON');
         },
       );
+
+  Future<void> _addColumnIfMissing(String table, String column, String type) async {
+    final columns = await customSelect('PRAGMA table_info($table)').get();
+    if (columns.any((row) => row.read<String>('name') == column)) return;
+    await customStatement('ALTER TABLE $table ADD COLUMN $column $type');
+  }
 
   Future<String> ensureLocalFarm() async {
     final setting = await (select(appSettings)..where((row) => row.key.equals(_localFarmSettingKey))).getSingleOrNull();
@@ -437,11 +454,12 @@ class AppDatabase extends _$AppDatabase {
 
     final entries = <AnimalHistoryEntry>[];
     if (animal.birthDate != null && (animal.damId != null || animal.sireId != null)) {
-      final parentIds = [animal.damId, animal.sireId].whereType<String>().toList();
+      final parentIds = [animal.damId, animal.sireId, animal.biologicalDamId].whereType<String>().toList();
       final parents = await (select(animals)..where((row) => row.id.isIn(parentIds))).get();
       final parentNames = {for (final parent in parents) parent.id: parent.name};
       final parentDescription = [
-        if (animal.damId != null) 'Mama: ${parentNames[animal.damId] ?? 'necunoscută'}',
+        if (animal.damId != null) 'Mama${animal.biologicalDamId != null ? ' adoptivă' : ''}: ${parentNames[animal.damId] ?? 'necunoscută'}',
+        if (animal.biologicalDamId != null) 'Mama biologică: ${parentNames[animal.biologicalDamId] ?? 'necunoscută'}',
         if (animal.sireId != null) 'Tatăl: ${parentNames[animal.sireId] ?? 'necunoscut'}',
       ].join(' · ');
       entries.add(AnimalHistoryEntry(
@@ -456,17 +474,40 @@ class AppDatabase extends _$AppDatabase {
           ..where((row) => row.damId.equals(animalId) & row.deletedAt.isNull())
           ..orderBy([(row) => OrderingTerm.desc(row.occurredAt)]))
         .get();
+    final adoptedAway = await (select(animals)..where((row) => row.biologicalDamId.equals(animalId))).get();
     for (final lambing in animalLambings) {
       final lambLinks = await (select(lambingLambs)..where((row) => row.lambingId.equals(lambing.id) & row.deletedAt.isNull())).get();
       final lambIds = lambLinks.map((link) => link.animalId).toList();
       final lambAnimals = lambIds.isEmpty ? <Animal>[] : await (select(animals)..where((row) => row.id.isIn(lambIds))).get();
       final lambNames = {for (final lamb in lambAnimals) lamb.id: lamb.name};
       final names = lambLinks.map((link) => lambNames[link.animalId] ?? 'Miel').join(', ');
+      final typeLabel = lambingTypeLabel(lambing.birthType);
+      final dead = lambing.deadLambs ?? 0;
+      if (lambing.kind == 'adoption') {
+        entries.add(AnimalHistoryEntry(
+          occurredAt: lambing.occurredAt,
+          category: 'lambing',
+          title: 'A adoptat un miel',
+          detail: [names, if (typeLabel.isNotEmpty) 'provine din ${typeLabel.toLowerCase()}', lambing.notes].where((value) => value.isNotEmpty).join(' · '),
+        ));
+        continue;
+      }
+      final adoptedNames = adoptedAway
+          .where((lamb) => lamb.birthDate != null && lamb.birthDate!.year == lambing.occurredAt.year && lamb.birthDate!.month == lambing.occurredAt.month && lamb.birthDate!.day == lambing.occurredAt.day)
+          .map((lamb) => lamb.name)
+          .toList();
+      final total = lambLinks.length + dead + adoptedNames.length;
       entries.add(AnimalHistoryEntry(
         occurredAt: lambing.occurredAt,
         category: 'lambing',
-        title: '${lambLinks.length} ${lambLinks.length == 1 ? 'miel' : 'miei'} născuți',
-        detail: [names, lambing.birthType, lambing.notes].where((value) => value.isNotEmpty).join(' · '),
+        title: '$total ${total == 1 ? 'miel născut' : 'miei născuți'}',
+        detail: [
+          names,
+          if (dead > 0) '$dead ${dead == 1 ? 'miel mort' : 'miei morți'}',
+          if (adoptedNames.isNotEmpty) 'adoptat de altă oaie: ${adoptedNames.join(', ')}',
+          typeLabel,
+          lambing.notes,
+        ].where((value) => value.isNotEmpty).join(' · '),
       ));
     }
 
@@ -529,7 +570,8 @@ class AppDatabase extends _$AppDatabase {
     return Stream<String>.fromFuture(resolvedFarmId).asyncExpand((id) {
       return (select(lambings)
             ..where((row) => row.farmId.equals(id) & row.deletedAt.isNull())
-            ..orderBy([(row) => OrderingTerm.desc(row.occurredAt)]))
+            // Pe aceeași zi, în ordinea introducerii: ultima introdusă rămâne ultima.
+            ..orderBy([(row) => OrderingTerm.desc(row.occurredAt), (row) => OrderingTerm.asc(row.createdAt), (row) => OrderingTerm(expression: const CustomExpression<int>('rowid'))]))
           .watch();
     });
   }
@@ -861,7 +903,8 @@ class AppDatabase extends _$AppDatabase {
       for (final link in linksForLamb) {
         lambLinksToDelete.add(link.id);
         final remainingLinks = await (select(lambingLambs)..where((r) => r.lambingId.equals(link.lambingId) & r.deletedAt.isNull() & r.id.isNotIn([link.id]))).get();
-        if (remainingLinks.isEmpty) lambingIdsToDelete.add(link.lambingId);
+        final parentLambing = await (select(lambings)..where((r) => r.id.equals(link.lambingId))).getSingleOrNull();
+        if (remainingLinks.isEmpty && (parentLambing?.deadLambs ?? 0) == 0) lambingIdsToDelete.add(link.lambingId);
       }
 
       final lambingIds = lambingIdsToDelete.toList();
@@ -1108,8 +1151,9 @@ class AppDatabase extends _$AppDatabase {
     required String birthType,
     required String notes,
     required List<LambBirth> lambs,
+    int deadLambs = 0,
   }) async {
-    if (lambs.isEmpty) {
+    if (lambs.isEmpty && deadLambs <= 0) {
       throw ArgumentError('O fătare trebuie să includă cel puțin un miel.');
     }
     if (sireId == damId) {
@@ -1139,6 +1183,7 @@ class AppDatabase extends _$AppDatabase {
         occurredAt: occurredAt,
         birthType: Value(birthType),
         notes: Value(notes.trim()),
+        deadLambs: Value(deadLambs > 0 ? deadLambs : null),
         createdAt: Value(now),
         updatedAt: Value(now),
       ));
@@ -1208,6 +1253,74 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// Un miel este crescut de altă oaie. Mielul trece la mama adoptivă în registrul de fătări,
+  /// iar mama biologică rămâne păstrată în fișa lui.
+  Future<void> adoptLamb({required String lambId, required String adoptiveDamId}) async {
+    final lamb = await _requireAnimal(lambId);
+    final adoptive = await _requireAnimal(adoptiveDamId);
+    if (adoptive.sex != 'Femelă' || adoptive.status != 'active') {
+      throw ArgumentError('Mama adoptivă trebuie să fie o femelă din turmă.');
+    }
+    if (adoptive.id == lamb.id || adoptive.id == lamb.damId) {
+      throw ArgumentError('Alege o altă oaie decât mama actuală.');
+    }
+    final now = DateTime.now();
+    final lambingId = const Uuid().v4();
+    final biologicalDamId = lamb.biologicalDamId ?? lamb.damId;
+    await transaction(() async {
+      final links = await (select(lambingLambs)..where((r) => r.animalId.equals(lambId) & r.deletedAt.isNull())).get();
+      String? originalType;
+      if (links.isNotEmpty) {
+        final original = await (select(lambings)..where((r) => r.id.equals(links.first.lambingId))).getSingleOrNull();
+        originalType = original?.birthType;
+      }
+      await into(lambings).insert(LambingsCompanion.insert(
+        id: lambingId,
+        farmId: lamb.farmId,
+        damId: adoptiveDamId,
+        occurredAt: lamb.birthDate ?? now,
+        birthType: Value(originalType ?? 'unknown'),
+        kind: const Value('adoption'),
+        createdAt: Value(now),
+        updatedAt: Value(now),
+      ));
+      if (links.isEmpty) {
+        await into(lambingLambs).insert(LambingLambsCompanion.insert(id: const Uuid().v4(), farmId: lamb.farmId, lambingId: lambingId, animalId: lambId, createdAt: Value(now), updatedAt: Value(now)));
+      } else {
+        for (final link in links) {
+          await (update(lambingLambs)..where((r) => r.id.equals(link.id))).write(LambingLambsCompanion(lambingId: Value(lambingId), updatedAt: Value(now), syncState: const Value('pending')));
+        }
+      }
+      await (update(animals)..where((r) => r.id.equals(lambId))).write(AnimalsCompanion(
+        damId: Value(adoptiveDamId),
+        biologicalDamId: Value(biologicalDamId),
+        updatedAt: Value(now),
+        syncState: const Value('pending'),
+      ));
+      await _queueSync(farmId: lamb.farmId, entityType: 'animal', entityId: lambId, operation: 'upsert', payload: {'id': lambId}, createdAt: now);
+      await _queueSync(farmId: lamb.farmId, entityType: 'lambing', entityId: lambingId, operation: 'upsert', payload: {'id': lambingId}, createdAt: now);
+      for (final link in links) {
+        await _queueSync(farmId: lamb.farmId, entityType: 'lambing_lamb', entityId: link.id, operation: 'upsert', payload: {'id': link.id}, createdAt: now);
+      }
+    });
+  }
+
+  /// Șterge o fătare împreună cu legăturile ei; mieii rămân în turmă.
+  Future<void> deleteLambing(String lambingId) async {
+    final lambing = await (select(lambings)..where((r) => r.id.equals(lambingId))).getSingleOrNull();
+    if (lambing == null) return;
+    final now = DateTime.now();
+    await transaction(() async {
+      final links = await (select(lambingLambs)..where((r) => r.lambingId.equals(lambingId) & r.deletedAt.isNull())).get();
+      await (update(lambingLambs)..where((r) => r.lambingId.equals(lambingId) & r.deletedAt.isNull())).write(LambingLambsCompanion(deletedAt: Value(now), updatedAt: Value(now), syncState: const Value('pending')));
+      await (update(lambings)..where((r) => r.id.equals(lambingId))).write(LambingsCompanion(deletedAt: Value(now), updatedAt: Value(now), syncState: const Value('pending')));
+      for (final link in links) {
+        await _queueSync(farmId: lambing.farmId, entityType: 'lambing_lamb', entityId: link.id, operation: 'upsert', payload: {'id': link.id}, createdAt: now);
+      }
+      await _queueSync(farmId: lambing.farmId, entityType: 'lambing', entityId: lambingId, operation: 'upsert', payload: {'id': lambingId}, createdAt: now);
+    });
+  }
+
   Future<void> _queueSync({
     required String farmId,
     required String entityType,
@@ -1227,6 +1340,15 @@ class AppDatabase extends _$AppDatabase {
     ));
   }
 }
+
+/// Eticheta în română a tipului de fătare; adopțiile păstrează tipul fătării originale.
+String lambingTypeLabel(String type) => switch (type) {
+      'single' => 'Un miel',
+      'twins' => 'Gemeni',
+      'triplets' => 'Tripleți',
+      'other' => 'Altă situație',
+      _ => '',
+    };
 
 class LambBirth {
   const LambBirth({

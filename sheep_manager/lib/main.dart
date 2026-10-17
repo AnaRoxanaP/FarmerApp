@@ -73,9 +73,89 @@ class _StanaAppState extends State<StanaApp> {
   }
 }
 
+const _roMonths = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'];
+
+/// Selector de dată: luna și anul din liste, ziua dintr-un calendar lunar (luni prima).
+Future<DateTime?> pickDate(BuildContext context, {required DateTime initial, required DateTime first, required DateTime last}) {
+  var day = initial.day;
+  var month = initial.month;
+  var year = initial.year.clamp(first.year, last.year).toInt();
+  return showDialog<DateTime>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(builder: (context, setLocal) {
+      final years = [for (var y = last.year; y >= first.year; y--) y];
+      final maxDay = DateUtils.getDaysInMonth(year, month);
+      if (day > maxDay) day = maxDay;
+      // Dacă ziua aleasă ar depăși limita (ex: azi), o aducem la limită în loc să blocăm alegerea.
+      if (DateTime(year, month, day).isAfter(last) && year == last.year) {
+        month = last.month;
+        day = last.day;
+      }
+      DateTime candidate() => DateTime(year, month, day);
+      final firstDay = DateTime(first.year, first.month, first.day);
+      final outOfRange = candidate().isAfter(last) || candidate().isBefore(firstDay);
+      final leading = DateTime(year, month, 1).weekday - 1;
+      return AlertDialog(
+        title: const Text('Alege data'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          DropdownButtonFormField<int>(
+            key: ValueKey('month-$month'),
+            initialValue: month,
+            decoration: const InputDecoration(labelText: 'Luna'),
+            items: [for (var m = 1; m <= 12; m++) DropdownMenuItem(value: m, child: Text(_roMonths[m - 1]))],
+            onChanged: (v) => setLocal(() => month = v ?? month),
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<int>(
+            initialValue: year,
+            decoration: const InputDecoration(labelText: 'Anul'),
+            items: [for (final y in years) DropdownMenuItem(value: y, child: Text('$y'))],
+            onChanged: (v) => setLocal(() => year = v ?? year),
+          ),
+          const SizedBox(height: 12),
+          Row(children: [for (final l in const ['L', 'M', 'M', 'J', 'V', 'S', 'D']) Expanded(child: Center(child: Text(l, style: const TextStyle(fontWeight: FontWeight.w700))))]),
+          const SizedBox(height: 4),
+          for (var week = 0; week < 6; week++)
+            if (week * 7 - leading + 1 <= maxDay)
+              Row(children: [
+                for (var col = 0; col < 7; col++)
+                  Expanded(
+                    child: Builder(builder: (_) {
+                      final d = week * 7 + col - leading + 1;
+                      if (d < 1 || d > maxDay) return const SizedBox(height: 40);
+                      final date = DateTime(year, month, d);
+                      final allowed = !date.isAfter(last) && !date.isBefore(firstDay);
+                      final selected = d == day;
+                      return Padding(
+                        padding: const EdgeInsets.all(1),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: allowed ? () => setLocal(() => day = d) : null,
+                          child: Container(
+                            height: 38,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(shape: BoxShape.circle, color: selected ? Theme.of(context).colorScheme.primary : null),
+                            child: Text('$d', style: TextStyle(color: selected ? Colors.white : allowed ? null : Colors.grey.shade400)),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+              ]),
+          if (outOfRange) const Padding(padding: EdgeInsets.only(top: 10), child: Text('Data nu este în intervalul permis.', style: TextStyle(color: Colors.red))),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Anulează')),
+          FilledButton(onPressed: outOfRange ? null : () => Navigator.pop(dialogContext, candidate()), child: const Text('Alege')),
+        ],
+      );
+    }),
+  );
+}
+
 String formatDate(DateTime date) => '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
 
-int lambingSeriesYear(DateTime date) => date.month >= 11 ? date.year + 1 : date.year;
+int lambingSeriesYear(DateTime date) => date.month >= 10 ? date.year + 1 : date.year;
 
 class AnimalListScreen extends StatefulWidget {
   const AnimalListScreen({required this.database, this.accountActions = const [], super.key});
@@ -299,6 +379,35 @@ class LambingsScreen extends StatefulWidget {
 class _LambingsScreenState extends State<LambingsScreen> {
   late int _selectedYear = lambingSeriesYear(DateTime.now());
 
+  // Cele mai noi zile primele; în aceeași zi, în ordinea introducerii (ultima introdusă la final).
+  List<Lambing> _orderedRecords(List<Lambing> records) {
+    final indexed = [for (var i = 0; i < records.length; i++) (i, records[i])];
+    indexed.sort((a, b) {
+      final dayA = DateUtils.dateOnly(a.$2.occurredAt);
+      final dayB = DateUtils.dateOnly(b.$2.occurredAt);
+      final byDay = dayB.compareTo(dayA);
+      if (byDay != 0) return byDay;
+      final byCreated = a.$2.createdAt.compareTo(b.$2.createdAt);
+      return byCreated != 0 ? byCreated : a.$1.compareTo(b.$1);
+    });
+    return [for (final item in indexed) item.$2];
+  }
+
+  Future<void> _confirmDeleteLambing(Lambing record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ștergi această fătare?'),
+        content: const Text('Se elimină doar înregistrarea fătării. Mieii rămân în turmă.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anulează')),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB3261E)), onPressed: () => Navigator.pop(context, true), child: const Text('Șterge')),
+        ],
+      ),
+    );
+    if (confirmed == true) await widget.database.deleteLambing(record.id);
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Lambing>>(
@@ -318,7 +427,7 @@ class _LambingsScreenState extends State<LambingsScreen> {
               final lamb = byId[link.animalId];
               if (lamb != null) lambsByLambing.putIfAbsent(link.lambingId, () => []).add(lamb);
             }
-            final allRecords = lambingSnapshot.data!;
+            final allRecords = _orderedRecords(lambingSnapshot.data!);
             final years = {
               lambingSeriesYear(DateTime.now()),
               ...allRecords.map((record) => lambingSeriesYear(record.occurredAt)),
@@ -362,35 +471,52 @@ class _LambingsScreenState extends State<LambingsScreen> {
                       final record = records[index];
                       final mother = byId[record.damId];
                       final lambs = lambsByLambing[record.id] ?? const <Animal>[];
+                      final dead = record.deadLambs ?? 0;
+                      final isAdoption = record.kind == 'adoption';
+                      final typeLabel = lambingTypeLabel(record.birthType);
+                      final details = [
+                        if (isAdoption) 'Adopție',
+                        if (isAdoption && typeLabel.isNotEmpty) 'provine din ${typeLabel.toLowerCase()}' else if (typeLabel.isNotEmpty) typeLabel,
+                        if (record.notes.isNotEmpty) record.notes,
+                      ].join(' · ');
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          const CircleAvatar(backgroundColor: Color(0xFFFAF0D6), child: Icon(Icons.child_friendly_rounded, color: Color(0xFFB5831D))),
+                          CircleAvatar(backgroundColor: const Color(0xFFFAF0D6), child: Icon(isAdoption ? Icons.volunteer_activism_outlined : Icons.child_friendly_rounded, color: const Color(0xFFB5831D))),
                           const SizedBox(width: 12),
                           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(formatDate(record.occurredAt), style: const TextStyle(fontSize: 11, color: _muted)),
                             const SizedBox(height: 3),
                             Text(mother?.name ?? 'Mamă necunoscută', style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
                             if (mother != null) Text('Crotaliu ${mother.earTag}', style: const TextStyle(fontSize: 10, color: _muted)),
-                            const SizedBox(height: 5),
-                            Text(record.notes.isEmpty ? record.birthType : '${record.birthType} · ${record.notes}', style: const TextStyle(fontSize: 11, color: _muted)),
+                            if (details.isNotEmpty) ...[
+                              const SizedBox(height: 5),
+                              Text(details, style: const TextStyle(fontSize: 11, color: _muted)),
+                            ],
                           ])),
                           const SizedBox(width: 10),
                           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                             const Text('Miel / miei', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _muted)),
                             const SizedBox(height: 4),
-                            if (lambs.isEmpty)
-                              const Text('Înregistrare fără miel', style: TextStyle(fontSize: 10, color: _muted))
-                            else
-                              for (final lamb in lambs)
-                                InkWell(
-                                  onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AnimalDetailScreen(database: widget.database, animalId: lamb.id))),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 2),
-                                    child: Text('${lamb.name.isEmpty ? 'Miel' : lamb.name} · ${lamb.earTag}', textAlign: TextAlign.end, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _leaf)),
-                                  ),
+                            if (lambs.isEmpty && dead == 0)
+                              const Text('Înregistrare fără miel', style: TextStyle(fontSize: 10, color: _muted)),
+                            for (final lamb in lambs)
+                              InkWell(
+                                onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AnimalDetailScreen(database: widget.database, animalId: lamb.id))),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 2),
+                                  child: Text('${lamb.name.isEmpty ? 'Miel' : lamb.name} · ${lamb.earTag}', textAlign: TextAlign.end, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _leaf)),
                                 ),
+                              ),
+                            if (dead > 0)
+                              Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: Text(dead == 1 ? 'Miel mort' : '$dead miei morți', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFB3261E)))),
                           ]),
+                          IconButton(
+                            tooltip: 'Șterge fătarea',
+                            visualDensity: VisualDensity.compact,
+                            icon: const Icon(Icons.delete_outline_rounded, size: 20, color: _muted),
+                            onPressed: () => _confirmDeleteLambing(record),
+                          ),
                         ]),
                       );
                     },
@@ -500,7 +626,7 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
   final _motherSearch = TextEditingController();
   final _lambs = <_LambDraft>[_LambDraft()];
   String? _damId;
-  DateTime _occurredAt = DateTime.now();
+  DateTime _occurredAt = DateUtils.dateOnly(DateTime.now());
   String _birthType = 'single';
   bool _saving = false;
 
@@ -515,7 +641,7 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
   }
 
   Future<void> _pickDate() async {
-    final date = await showDatePicker(context: context, initialDate: _occurredAt, firstDate: DateTime(1990), lastDate: DateTime.now());
+    final date = await pickDate(context, initial: _occurredAt.isAfter(DateTime.now()) ? DateTime.now() : _occurredAt, first: DateTime(1990), last: DateTime.now());
     if (date != null) setState(() => _occurredAt = date);
   }
 
@@ -542,7 +668,7 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
         occurredAt: _occurredAt,
         birthType: _birthType,
         notes: _notes.text,
-        lambs: _lambs.map((lamb) => LambBirth(
+        lambs: _lambs.where((lamb) => !lamb.dead).map((lamb) => LambBirth(
           name: lamb.name.text,
           sex: lamb.sex,
           breed: lamb.breed.text,
@@ -551,6 +677,7 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
           birthWeightKg: double.tryParse(lamb.weight.text.replaceAll(',', '.')),
           notes: lamb.notes.text,
         )).toList(),
+        deadLambs: _lambs.where((lamb) => lamb.dead).length,
       );
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
@@ -680,6 +807,7 @@ class _LambDraft {
   final weight = TextEditingController();
   final notes = TextEditingController();
   String sex = 'Femelă';
+  bool dead = false;
 
   void dispose() {
     name.dispose();
@@ -710,6 +838,16 @@ class _LambFormCardState extends State<_LambFormCard> {
         decoration: BoxDecoration(color: _cream, borderRadius: BorderRadius.circular(12)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [Expanded(child: Text('Mielul ${widget.index + 1}', style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF18352B)))), if (widget.canRemove) IconButton(onPressed: widget.onRemove, icon: const Icon(Icons.remove_circle_outline), visualDensity: VisualDensity.compact)]),
+          Row(children: [
+            const Expanded(child: Text('Miel mort (fără crotaliu)', style: TextStyle(fontSize: 13))),
+            Switch(value: widget.draft.dead, onChanged: (value) => setState(() => widget.draft.dead = value)),
+          ]),
+          if (widget.draft.dead) const Padding(padding: EdgeInsets.only(bottom: 4), child: Text('Se înregistrează doar că oaia a fătat.', style: TextStyle(fontSize: 11, color: _muted))),
+          if (!widget.draft.dead) ..._fields(),
+        ]),
+      );
+
+  List<Widget> _fields() => [
           TextFormField(controller: widget.draft.name, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(labelText: 'Nume (opțional)')),
           const SizedBox(height: 9),
           SegmentedButton<String>(segments: const [ButtonSegment(value: 'Femelă', label: Text('Femelă')), ButtonSegment(value: 'Mascul', label: Text('Mascul'))], selected: {widget.draft.sex}, onSelectionChanged: (selection) => setState(() => widget.draft.sex = selection.first)),
@@ -721,8 +859,7 @@ class _LambFormCardState extends State<_LambFormCard> {
           TextFormField(controller: widget.draft.weight, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Greutate la naștere (kg, opțional)'), validator: (value) { if (value == null || value.trim().isEmpty) return null; final weight = double.tryParse(value.replaceAll(',', '.')); return weight == null || weight <= 0 ? 'Introdu o greutate validă.' : null; }),
           const SizedBox(height: 9),
           TextFormField(controller: widget.draft.mark, decoration: const InputDecoration(labelText: 'Semn (opțional)')),
-        ]),
-      );
+        ];
 }
 
 class AddTreatmentSheet extends StatefulWidget {
@@ -756,7 +893,7 @@ class _AddTreatmentSheetState extends State<AddTreatmentSheet> {
     super.dispose();
   }
 
-  Future<DateTime?> _pickDate(DateTime initial) => showDatePicker(context: context, initialDate: initial, firstDate: DateTime(1990), lastDate: DateTime(2100));
+  Future<DateTime?> _pickDate(DateTime initial) => pickDate(context, initial: initial, first: DateTime(2000), last: DateTime(DateTime.now().year + 3, 12, 31));
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
@@ -1057,7 +1194,7 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
                 icon: const Icon(Icons.event_outlined),
                 label: Text(formatDate(date)),
                 onPressed: () async {
-                  final picked = await showDatePicker(context: context, initialDate: date, firstDate: DateTime(2000), lastDate: DateTime.now());
+                  final picked = await pickDate(context, initial: date.isAfter(DateTime.now()) ? DateTime.now() : date, first: DateTime(2000), last: DateTime.now());
                   if (picked != null) setLocal(() => date = picked);
                 },
               ),
@@ -1079,6 +1216,38 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
     if (!mounted) return;
     setState(() => _historyFuture = widget.database.loadAnimalHistory(widget.animalId));
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Starea animalului a fost actualizată.')));
+  }
+
+  Future<void> _adoptLamb(Animal lamb) async {
+    final candidates = (await widget.database.watchAnimals().first).where((a) => a.sex == 'Femelă' && a.status == 'active' && a.id != lamb.id && a.id != lamb.damId).toList();
+    if (!mounted) return;
+    final search = TextEditingController();
+    final chosen = await showDialog<Animal>(
+      context: context,
+      builder: (context) => StatefulBuilder(builder: (context, setLocal) {
+        final query = search.text.trim().toLowerCase();
+        final digits = query.replaceAll(RegExp(r'\D'), '');
+        final shown = candidates.where((a) => query.isEmpty || a.name.toLowerCase().contains(query) || a.earTag.toLowerCase().contains(query) || (digits.length >= 3 && a.earTag.replaceAll(RegExp(r'\D'), '').endsWith(digits))).take(6).toList();
+        return AlertDialog(
+          title: const Text('Care oaie a adoptat mielul?'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              TextField(controller: search, decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Caută după nume sau crotaliu'), onChanged: (_) => setLocal(() {})),
+              const SizedBox(height: 8),
+              if (shown.isEmpty) const Padding(padding: EdgeInsets.all(8), child: Text('Nicio oaie găsită.')),
+              for (final a in shown) ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text(a.name), subtitle: Text('Crotaliu ${a.earTag}'), onTap: () => Navigator.pop(context, a)),
+            ]),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Anulează'))],
+        );
+      }),
+    );
+    search.dispose();
+    if (chosen == null || !mounted) return;
+    await widget.database.adoptLamb(lambId: lamb.id, adoptiveDamId: chosen.id);
+    if (!mounted) return;
+    setState(() => _historyFuture = widget.database.loadAnimalHistory(widget.animalId));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Mielul a fost trecut la ${chosen.name}.')));
   }
 
   Future<void> _deleteAnimal(Animal animal) async {
@@ -1208,7 +1377,7 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
                       padding: const EdgeInsets.all(15),
                       decoration: BoxDecoration(color: const Color(0xFFE8F1E8), border: Border.all(color: _line), borderRadius: BorderRadius.circular(12)),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        const Text('MAMA', style: TextStyle(fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800, color: _leaf)),
+                        Text(animal.biologicalDamId == null ? 'MAMA' : 'MAMA ADOPTIVĂ', style: const TextStyle(fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800, color: _leaf)),
                         const SizedBox(height: 8),
                         Text(mother.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
                         const SizedBox(height: 10),
@@ -1235,6 +1404,16 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
                       ]),
                     ),
                   ],
+                  if (animal.deletedAt == null && animal.status == 'active')
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => _adoptLamb(animal),
+                        icon: const Icon(Icons.volunteer_activism_outlined),
+                        label: Text(animal.damId == null ? 'Alege mama (adopție)' : 'Adoptat de altă oaie'),
+                        style: TextButton.styleFrom(foregroundColor: _leaf),
+                      ),
+                    ),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TextButton.icon(
@@ -1389,13 +1568,7 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
         : currentDate.isBefore(earliestDate)
             ? earliestDate
             : currentDate;
-    final date = await showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: earliestDate,
-      lastDate: today,
-      locale: const Locale('ro', 'RO'),
-    );
+    final date = await pickDate(context, initial: initialDate, first: earliestDate, last: today);
     if (date != null) setState(() => _birthDate = date);
   }
 
