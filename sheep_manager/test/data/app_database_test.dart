@@ -45,7 +45,35 @@ void main() {
     expect(await database.watchAnimals().first, hasLength(2));
   });
 
-  test('ștergerea mielului păstrează fătarea în istoricul mamei', () async {
+  test('crotaliul unui animal șters poate fi reutilizat, iar animalul vechi poate fi restaurat dacă nu s-a ocupat', () async {
+    await database.addAnimal(id: 'animal-old', name: 'Oaia veche', sex: 'Femelă', breed: 'Țurcană', earTag: 'RO-77', mark: '');
+    await database.deleteAnimal('animal-old');
+
+    await database.addAnimal(id: 'animal-new', name: 'Oaia nouă', sex: 'Femelă', breed: 'Țurcană', earTag: 'RO-77', mark: '');
+    expect(await database.watchAnimals().first, hasLength(1));
+    await expectLater(database.restoreAnimal('animal-old'), throwsA(anything));
+  });
+
+  test('restaurarea animalului readuce și istoricul șters odată cu el', () async {
+    final damId = await addMother();
+    await database.recordLambing(
+      lambingId: 'restore-lambing',
+      damId: damId,
+      occurredAt: DateTime(2026, 10, 12),
+      birthType: 'single',
+      notes: '',
+      lambs: const [LambBirth(name: 'Miel', sex: 'Mascul', breed: 'Țurcană', earTag: 'RO-78')],
+    );
+    final lambId = (await database.select(database.animals).get()).singleWhere((animal) => animal.earTag == 'RO-78').id;
+    await database.deleteAnimal(lambId);
+    expect((await database.loadAnimalHistory(damId)).entries.where((entry) => entry.category == 'lambing'), isEmpty);
+
+    await database.restoreAnimal(lambId);
+    expect((await database.loadAnimalHistory(damId)).entries.where((entry) => entry.category == 'lambing'), hasLength(1));
+    expect(await database.watchAnimals().first, hasLength(2));
+  });
+
+  test('ștergerea ultimului miel elimină fătarea din istoricul mamei', () async {
     final damId = await addMother();
     await database.recordLambing(
       lambingId: 'del-lambing',
@@ -59,10 +87,31 @@ void main() {
     await database.deleteAnimal(lambId);
     expect(await database.watchAnimals(includeInactive: true).first, hasLength(1));
     final history = await database.loadAnimalHistory(damId);
-    expect(history.entries.where((e) => e.category == 'lambing'), hasLength(1));
-    await database.deleteAnimal(damId);
-    expect(await database.watchAnimals(includeInactive: true).first, isEmpty);
+    expect(history.entries.where((e) => e.category == 'lambing'), isEmpty);
     expect(await database.watchLambings().first, isEmpty);
+    final deletedLink = (await database.select(database.lambingLambs).getSingle());
+    final queuedLink = (await (database.select(database.syncQueue)..where((row) => row.entityId.equals(deletedLink.id))).getSingleOrNull());
+    expect(queuedLink, isNotNull);
+  });
+
+  test('ștergerea unui miel dintr-o fătare multiplă păstrează fătarea celuilalt miel', () async {
+    final damId = await addMother();
+    await database.recordLambing(
+      lambingId: 'twins-lambing',
+      damId: damId,
+      occurredAt: DateTime(2026, 1, 12),
+      birthType: 'twins',
+      notes: '',
+      lambs: const [
+        LambBirth(name: 'Miel 1', sex: 'Mascul', breed: 'Țurcană', earTag: 'RO-10'),
+        LambBirth(name: 'Miel 2', sex: 'Femelă', breed: 'Țurcană', earTag: 'RO-11'),
+      ],
+    );
+    final lambId = (await database.select(database.animals).get()).singleWhere((a) => a.earTag == 'RO-10').id;
+    await database.deleteAnimal(lambId);
+    final history = await database.loadAnimalHistory(damId);
+    expect(history.entries.where((e) => e.category == 'lambing'), hasLength(1));
+    expect(await database.watchLambings().first, hasLength(1));
   });
 
   test('fătarea creează toți mieii și păstrează relațiile în aceeași gospodărie', () async {
@@ -185,6 +234,9 @@ void main() {
     expect(lambHistory.entries, hasLength(1));
     expect(lambHistory.entries.single.category, 'birth');
     expect(lambHistory.entries.single.detail, contains('Mioara'));
+    expect(lambHistory.mother?.name, 'Mioara');
+    expect(lambHistory.mother?.earTag, 'RO-001');
+    expect(lambHistory.mother?.mark, 'Urechea stângă crestată');
   });
 
   test('editarea unui miel păstrează UUID-ul și legătura cu mama', () async {

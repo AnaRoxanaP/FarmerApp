@@ -147,6 +147,7 @@ class SyncService {
   static final _byQueueType = {
     'animal': _animals,
     'lambing': _lambings,
+    'lambing_lamb': _lambingLambs,
     'treatment': _treatments,
     'weighing': _weighings,
     'breeding_event': _breedingEvents,

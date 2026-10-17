@@ -75,6 +75,8 @@ class _StanaAppState extends State<StanaApp> {
 
 String formatDate(DateTime date) => '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
 
+int lambingSeriesYear(DateTime date) => date.month >= 11 ? date.year + 1 : date.year;
+
 class AnimalListScreen extends StatefulWidget {
   const AnimalListScreen({required this.database, this.accountActions = const [], super.key});
 
@@ -92,9 +94,13 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
   String _group = 'all';
   String _statusFilter = 'active';
 
-  static const _statusFilters = [('active', 'În turmă'), ('sold', 'Vândute'), ('slaughtered', 'Sacrificate'), ('all', 'Toate')];
+  static const _statusFilters = [('active', 'În turmă'), ('sold', 'Vândute'), ('slaughtered', 'Sacrificate'), ('all', 'Toate'), ('deleted', 'Șterse')];
 
-  List<Animal> _filterStatus(List<Animal> animals) => _statusFilter == 'all' ? animals : animals.where((animal) => animal.status == _statusFilter).toList();
+  List<Animal> _filterStatus(List<Animal> animals) => switch (_statusFilter) {
+        'deleted' => animals.where((animal) => animal.deletedAt != null).toList(),
+        'all' => animals.where((animal) => animal.deletedAt == null).toList(),
+        _ => animals.where((animal) => animal.deletedAt == null && animal.status == _statusFilter).toList(),
+      };
   // Miel = animal sub un an; fără dată a nașterii, animalul se consideră adult.
   bool _isLamb(Animal animal) {
     final born = animal.birthDate;
@@ -202,11 +208,11 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
         label: Text(['Animal nou', 'Fătare', 'Tratament'][_tabIndex], style: const TextStyle(fontWeight: FontWeight.w700)),
       ),
       body: _tabIndex == 0 ? StreamBuilder<List<Animal>>(
-        stream: widget.database.watchAnimals(includeInactive: true),
+        stream: widget.database.watchAnimals(includeInactive: true, includeDeleted: true),
         builder: (context, snapshot) {
           if (snapshot.hasError) return _ErrorState(message: 'Nu am putut citi baza de date locală.');
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: _leaf));
-          final activeCount = snapshot.data!.where((animal) => animal.status == 'active').length;
+          final activeCount = snapshot.data!.where((animal) => animal.deletedAt == null && animal.status == 'active').length;
           final grouped = _filterGroup(_filterStatus(snapshot.data!));
           final animals = _filterAnimals(grouped);
           return CustomScrollView(slivers: [
@@ -282,23 +288,44 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
   }
 }
 
-class LambingsScreen extends StatelessWidget {
+class LambingsScreen extends StatefulWidget {
   const LambingsScreen({required this.database, super.key});
   final AppDatabase database;
 
   @override
+  State<LambingsScreen> createState() => _LambingsScreenState();
+}
+
+class _LambingsScreenState extends State<LambingsScreen> {
+  late int _selectedYear = lambingSeriesYear(DateTime.now());
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Lambing>>(
-      stream: database.watchLambings(),
+      stream: widget.database.watchLambings(),
       builder: (context, lambingSnapshot) {
         if (lambingSnapshot.hasError) return const _ErrorState(message: 'Nu am putut citi registrul fătărilor.');
         if (!lambingSnapshot.hasData) return const Center(child: CircularProgressIndicator(color: _leaf));
-        return StreamBuilder<List<Animal>>(
-          stream: database.watchAnimals(includeInactive: true),
+        return StreamBuilder<List<LambingLamb>>(
+          stream: widget.database.watchLambingLambs(),
+          builder: (context, linkSnapshot) => StreamBuilder<List<Animal>>(
+          stream: widget.database.watchAnimals(includeInactive: true),
           builder: (context, animalSnapshot) {
             final animals = animalSnapshot.data ?? const <Animal>[];
             final byId = {for (final animal in animals) animal.id: animal};
-            final records = lambingSnapshot.data!;
+            final lambsByLambing = <String, List<Animal>>{};
+            for (final link in linkSnapshot.data ?? const <LambingLamb>[]) {
+              final lamb = byId[link.animalId];
+              if (lamb != null) lambsByLambing.putIfAbsent(link.lambingId, () => []).add(lamb);
+            }
+            final allRecords = lambingSnapshot.data!;
+            final years = {
+              lambingSeriesYear(DateTime.now()),
+              ...allRecords.map((record) => lambingSeriesYear(record.occurredAt)),
+            }.toList()
+              ..sort((first, second) => second.compareTo(first));
+            if (!years.contains(_selectedYear)) _selectedYear = years.first;
+            final records = allRecords.where((record) => lambingSeriesYear(record.occurredAt) == _selectedYear).toList();
             return CustomScrollView(slivers: [
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
@@ -309,11 +336,22 @@ class LambingsScreen extends StatelessWidget {
                   const SizedBox(height: 18),
                   _SummaryBanner(count: records.length),
                   const SizedBox(height: 22),
-                  Text('${records.length} ${records.length == 1 ? 'fătare înregistrată' : 'fătări înregistrate'}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
+                  DropdownButtonFormField<int>(
+                    initialValue: _selectedYear,
+                    decoration: const InputDecoration(labelText: 'Seria de fătări'),
+                    items: [
+                      for (final year in years) DropdownMenuItem(value: year, child: Text('Fătări $year')),
+                    ],
+                    onChanged: (year) {
+                      if (year != null) setState(() => _selectedYear = year);
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  Text('Fătări $_selectedYear · ${records.length} ${records.length == 1 ? 'înregistrare' : 'înregistrări'}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
                 ]),
               ),
               if (records.isEmpty)
-                const SliverFillRemaining(hasScrollBody: false, child: _RecordEmptyState(icon: Icons.child_friendly_rounded, title: 'Încă nu sunt fătări', detail: 'Folosește butonul „Fătare” pentru a înregistra una.'))
+                SliverFillRemaining(hasScrollBody: false, child: _RecordEmptyState(icon: Icons.child_friendly_rounded, title: 'Nicio fătare în $_selectedYear', detail: 'Înregistrează fătările din această serie folosind butonul „Fătare”.'))
               else
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
@@ -323,18 +361,44 @@ class LambingsScreen extends StatelessWidget {
                     itemBuilder: (context, index) {
                       final record = records[index];
                       final mother = byId[record.damId];
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(vertical: 5),
-                        leading: const CircleAvatar(backgroundColor: Color(0xFFFAF0D6), child: Icon(Icons.child_friendly_rounded, color: Color(0xFFB5831D))),
-                        title: Text(mother?.name ?? 'Mamă necunoscută', style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
-                        subtitle: Text('${formatDate(record.occurredAt)} · ${record.birthType}\n${record.notes.isEmpty ? 'Fără observații' : record.notes}', style: const TextStyle(fontSize: 11, height: 1.5, color: _muted)),
-                        isThreeLine: true,
+                      final lambs = lambsByLambing[record.id] ?? const <Animal>[];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          const CircleAvatar(backgroundColor: Color(0xFFFAF0D6), child: Icon(Icons.child_friendly_rounded, color: Color(0xFFB5831D))),
+                          const SizedBox(width: 12),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(formatDate(record.occurredAt), style: const TextStyle(fontSize: 11, color: _muted)),
+                            const SizedBox(height: 3),
+                            Text(mother?.name ?? 'Mamă necunoscută', style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
+                            if (mother != null) Text('Crotaliu ${mother.earTag}', style: const TextStyle(fontSize: 10, color: _muted)),
+                            const SizedBox(height: 5),
+                            Text(record.notes.isEmpty ? record.birthType : '${record.birthType} · ${record.notes}', style: const TextStyle(fontSize: 11, color: _muted)),
+                          ])),
+                          const SizedBox(width: 10),
+                          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                            const Text('Miel / miei', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _muted)),
+                            const SizedBox(height: 4),
+                            if (lambs.isEmpty)
+                              const Text('Înregistrare fără miel', style: TextStyle(fontSize: 10, color: _muted))
+                            else
+                              for (final lamb in lambs)
+                                InkWell(
+                                  onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AnimalDetailScreen(database: widget.database, animalId: lamb.id))),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 2),
+                                    child: Text('${lamb.name.isEmpty ? 'Miel' : lamb.name} · ${lamb.earTag}', textAlign: TextAlign.end, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _leaf)),
+                                  ),
+                                ),
+                          ]),
+                        ]),
                       );
                     },
                   ),
                 ),
             ]);
           },
+        ),
         );
       },
     );
@@ -925,7 +989,7 @@ class _AnimalTile extends StatelessWidget {
       title: Text(animal.name, style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
       subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text('${animal.breed} · ${animal.sex.toLowerCase()}\nCrotaliu ${animal.earTag}', style: const TextStyle(fontSize: 11, height: 1.45, color: _muted))),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (!EarMarks.decode(animal.earMarks).isEmpty) EarMarksView(marks: EarMarks.decode(animal.earMarks), height: 28, showLabels: false),
+        EarMarksView(marks: EarMarks.decode(animal.earMarks), height: 28, showLabels: false),
         const Icon(Icons.chevron_right_rounded, color: Color(0xFFA7AEA5)),
       ]),
       isThreeLine: true,
@@ -1049,6 +1113,31 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
     Navigator.of(context).pop();
   }
 
+  Future<void> _restoreAnimal(Animal animal) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restaurezi animalul?'),
+        content: Text('„${animal.name}” și istoricul salvat împreună cu el vor reveni în aplicație.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Anulează')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Restaurează')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await widget.database.restoreAnimal(animal.id);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nu am putut restaura animalul. Verifică dacă acest crotaliu este deja folosit de alt animal.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
@@ -1062,6 +1151,12 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
             if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: _leaf));
             final history = snapshot.data!;
             final animal = history.animal;
+            final mother = history.mother;
+            final motherMarks = mother == null ? const EarMarks() : EarMarks.decode(mother.earMarks);
+            final motherMarkDescription = [
+              motherMarks.summary,
+              if (mother?.mark.isNotEmpty == true) mother!.mark,
+            ].where((value) => value.isNotEmpty).join(' · ');
             return CustomScrollView(slivers: [
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
@@ -1101,18 +1196,52 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
                       ],
                       const SizedBox(height: 12),
                       Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                        Expanded(child: _DetailField(label: 'STARE', value: _statusText(animal.status))),
-                        OutlinedButton(onPressed: () => _changeStatus(animal), child: const Text('Schimbă')),
+                        Expanded(child: _DetailField(label: 'STARE', value: animal.deletedAt == null ? _statusText(animal.status) : 'Șters')),
+                        if (animal.deletedAt == null)
+                          OutlinedButton(onPressed: () => _changeStatus(animal), child: const Text('Schimbă')),
                       ]),
                     ]),
                   ),
+                  if (mother != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(15),
+                      decoration: BoxDecoration(color: const Color(0xFFE8F1E8), border: Border.all(color: _line), borderRadius: BorderRadius.circular(12)),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Text('MAMA', style: TextStyle(fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800, color: _leaf)),
+                        const SizedBox(height: 8),
+                        Text(mother.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
+                        const SizedBox(height: 10),
+                        _DetailField(label: 'CROTALIU', value: mother.earTag),
+                        if (mother.internalNumber != null && mother.internalNumber!.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          _DetailField(label: 'NUMĂR INTERN', value: mother.internalNumber!),
+                        ],
+                        const SizedBox(height: 10),
+                        _DetailField(label: 'RASĂ · SEX', value: '${mother.breed} · ${mother.sex}'),
+                        if (mother.birthDate != null) ...[
+                          const SizedBox(height: 10),
+                          _DetailField(label: 'DATA NAȘTERII', value: _dateText(context, mother.birthDate!)),
+                        ],
+                        const SizedBox(height: 10),
+                        _DetailField(label: 'STARE', value: _statusText(mother.status)),
+                        const SizedBox(height: 10),
+                        _DetailField(
+                          label: 'SEMNE LA URECHI ȘI COARNE',
+                          value: motherMarkDescription.isEmpty ? 'Nespecificat' : motherMarkDescription,
+                        ),
+                        const SizedBox(height: 6),
+                        Center(child: EarMarksView(marks: motherMarks, height: 75)),
+                      ]),
+                    ),
+                  ],
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TextButton.icon(
-                      onPressed: () => _deleteAnimal(animal),
-                      icon: const Icon(Icons.delete_outline_rounded),
-                      label: const Text('Șterge animalul definitiv'),
-                      style: TextButton.styleFrom(foregroundColor: const Color(0xFFB3261E)),
+                      onPressed: animal.deletedAt == null ? () => _deleteAnimal(animal) : () => _restoreAnimal(animal),
+                      icon: Icon(animal.deletedAt == null ? Icons.delete_outline_rounded : Icons.restore_rounded),
+                      label: Text(animal.deletedAt == null ? 'Șterge animalul definitiv' : 'Restaurează animalul și istoricul'),
+                      style: TextButton.styleFrom(foregroundColor: animal.deletedAt == null ? const Color(0xFFB3261E) : _leaf),
                     ),
                   ),
                   const SizedBox(height: 23),

@@ -60,10 +60,7 @@ class Animals extends Table {
   Set<Column<Object>> get primaryKey => {id};
 
   @override
-  List<Set<Column>> get uniqueKeys => [
-        {farmId, internalNumber},
-        {farmId, earTag},
-      ];
+  List<Set<Column>> get uniqueKeys => [];
 }
 
 class Lambings extends Table {
@@ -241,11 +238,14 @@ class AppDatabase extends _$AppDatabase {
   static const _localFarmSettingKey = 'local_farm_id';
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) => m.createAll(),
+        onCreate: (m) async {
+          await m.createAll();
+          await _createAnimalUniqueIndexes();
+        },
         onUpgrade: (m, from, to) async {
           if (from < 2) {
             await m.createTable(farms);
@@ -284,6 +284,69 @@ class AppDatabase extends _$AppDatabase {
           // De la v1 tabela animals se recreează deja cu coloana nouă.
           if (from >= 2 && from < 3) {
             await m.addColumn(animals, animals.earMarks);
+          }
+          if (from < 4) {
+            await customStatement('PRAGMA defer_foreign_keys = ON');
+            final existingTables = await customSelect(
+              "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('animals', 'animals_v4')",
+            ).get();
+            final hasAnimals = existingTables.any((row) => row.read<String>('name') == 'animals');
+            final hasAnimalsV4 = existingTables.any((row) => row.read<String>('name') == 'animals_v4');
+
+            if (hasAnimalsV4 && hasAnimals) {
+              // A previous migration attempt may have stopped after creating the temporary table.
+              await customStatement('DROP TABLE animals_v4');
+            } else if (hasAnimalsV4) {
+              // The old table was already dropped; finish the interrupted rename.
+              await customStatement('ALTER TABLE animals_v4 RENAME TO animals');
+            }
+
+            if (!hasAnimals && !hasAnimalsV4) {
+              throw StateError('Migrarea nu a găsit tabela animals sau copia temporară animals_v4.');
+            }
+
+            final sourceIsAnimals = hasAnimals;
+            if (sourceIsAnimals) {
+              await customStatement('''
+              CREATE TABLE animals_v4 (
+                id TEXT NOT NULL PRIMARY KEY,
+                farm_id TEXT NOT NULL REFERENCES farms(id),
+                name TEXT NOT NULL,
+                internal_number TEXT,
+                sex TEXT NOT NULL,
+                breed TEXT NOT NULL,
+                ear_tag TEXT NOT NULL,
+                mark TEXT NOT NULL DEFAULT '',
+                ear_marks TEXT,
+                birth_date INTEGER,
+                dam_id TEXT REFERENCES animals_v4(id),
+                sire_id TEXT REFERENCES animals_v4(id),
+                origin TEXT NOT NULL DEFAULT 'born',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                deleted_at INTEGER,
+                sync_state TEXT NOT NULL DEFAULT 'pending',
+                created_by TEXT,
+                updated_by TEXT
+              )
+            ''');
+              await customStatement('''
+              INSERT INTO animals_v4 (
+                id, farm_id, name, internal_number, sex, breed, ear_tag, mark,
+                ear_marks, birth_date, dam_id, sire_id, origin, created_at,
+                updated_at, status, deleted_at, sync_state, created_by, updated_by
+              )
+              SELECT
+                id, farm_id, name, internal_number, sex, breed, ear_tag, mark,
+                ear_marks, birth_date, dam_id, sire_id, origin, created_at,
+                updated_at, status, deleted_at, sync_state, created_by, updated_by
+              FROM animals
+            ''');
+              await customStatement('DROP TABLE animals');
+              await customStatement('ALTER TABLE animals_v4 RENAME TO animals');
+            }
+            await _createAnimalUniqueIndexes();
           }
         },
         beforeOpen: (_) async {
@@ -337,11 +400,17 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
-  Stream<List<Animal>> watchAnimals({String? farmId, bool includeInactive = false}) {
+  Future<void> _createAnimalUniqueIndexes() async {
+    await customStatement('CREATE UNIQUE INDEX IF NOT EXISTS animals_active_ear_tag ON animals (farm_id, ear_tag) WHERE deleted_at IS NULL');
+    await customStatement('CREATE UNIQUE INDEX IF NOT EXISTS animals_active_internal_number ON animals (farm_id, internal_number) WHERE deleted_at IS NULL AND internal_number IS NOT NULL');
+  }
+
+  Stream<List<Animal>> watchAnimals({String? farmId, bool includeInactive = false, bool includeDeleted = false}) {
     final resolvedFarmId = farmId == null ? ensureLocalFarm() : Future<String>.value(farmId);
     return Stream<String>.fromFuture(resolvedFarmId).asyncExpand((id) {
       final query = select(animals)
-        ..where((row) => row.farmId.equals(id) & row.deletedAt.isNull() & (includeInactive ? const Constant(true) : row.status.equals('active')))
+        ..where((row) =>
+            row.farmId.equals(id) & (includeDeleted ? const Constant(true) : row.deletedAt.isNull()) & (includeInactive || includeDeleted ? const Constant(true) : row.status.equals('active')))
         ..orderBy([(row) => OrderingTerm.asc(row.name)]);
       return query.watch();
     });
@@ -364,6 +433,7 @@ class AppDatabase extends _$AppDatabase {
   Future<AnimalHistory> loadAnimalHistory(String animalId) async {
     final animal = await (select(animals)..where((row) => row.id.equals(animalId))).getSingleOrNull();
     if (animal == null) throw ArgumentError('Animalul nu a fost găsit.');
+    final mother = animal.damId == null ? null : await (select(animals)..where((row) => row.id.equals(animal.damId!))).getSingleOrNull();
 
     final entries = <AnimalHistoryEntry>[];
     if (animal.birthDate != null && (animal.damId != null || animal.sireId != null)) {
@@ -387,9 +457,7 @@ class AppDatabase extends _$AppDatabase {
           ..orderBy([(row) => OrderingTerm.desc(row.occurredAt)]))
         .get();
     for (final lambing in animalLambings) {
-      final lambLinks = await (select(lambingLambs)
-            ..where((row) => row.lambingId.equals(lambing.id) & row.deletedAt.isNull()))
-          .get();
+      final lambLinks = await (select(lambingLambs)..where((row) => row.lambingId.equals(lambing.id) & row.deletedAt.isNull())).get();
       final lambIds = lambLinks.map((link) => link.animalId).toList();
       final lambAnimals = lambIds.isEmpty ? <Animal>[] : await (select(animals)..where((row) => row.id.isIn(lambIds))).get();
       final lambNames = {for (final lamb in lambAnimals) lamb.id: lamb.name};
@@ -402,9 +470,7 @@ class AppDatabase extends _$AppDatabase {
       ));
     }
 
-    final animalTreatments = await (select(treatments)
-          ..where((row) => row.animalId.equals(animalId) & row.deletedAt.isNull()))
-        .get();
+    final animalTreatments = await (select(treatments)..where((row) => row.animalId.equals(animalId) & row.deletedAt.isNull())).get();
     entries.addAll(animalTreatments.map((treatment) => AnimalHistoryEntry(
           occurredAt: treatment.administeredAt,
           category: 'treatment',
@@ -417,9 +483,7 @@ class AppDatabase extends _$AppDatabase {
           ].where((value) => value.isNotEmpty).join(' · '),
         )));
 
-    final animalWeighings = await (select(weighings)
-          ..where((row) => row.animalId.equals(animalId) & row.deletedAt.isNull()))
-        .get();
+    final animalWeighings = await (select(weighings)..where((row) => row.animalId.equals(animalId) & row.deletedAt.isNull())).get();
     entries.addAll(animalWeighings.map((weighing) => AnimalHistoryEntry(
           occurredAt: weighing.measuredAt,
           category: 'weighing',
@@ -427,9 +491,7 @@ class AppDatabase extends _$AppDatabase {
           detail: weighing.notes,
         )));
 
-    final animalBreedingEvents = await (select(breedingEvents)
-          ..where((row) => (row.damId.equals(animalId) | row.sireId.equals(animalId)) & row.deletedAt.isNull()))
-        .get();
+    final animalBreedingEvents = await (select(breedingEvents)..where((row) => (row.damId.equals(animalId) | row.sireId.equals(animalId)) & row.deletedAt.isNull())).get();
     entries.addAll(animalBreedingEvents.map((event) => AnimalHistoryEntry(
           occurredAt: event.occurredAt,
           category: 'breeding',
@@ -437,9 +499,7 @@ class AppDatabase extends _$AppDatabase {
           detail: [event.outcome ?? '', event.notes].where((value) => value.isNotEmpty).join(' · '),
         )));
 
-    final animalEventsList = await (select(animalEvents)
-          ..where((row) => row.animalId.equals(animalId) & row.deletedAt.isNull()))
-        .get();
+    final animalEventsList = await (select(animalEvents)..where((row) => row.animalId.equals(animalId) & row.deletedAt.isNull())).get();
     entries.addAll(animalEventsList.map((event) => AnimalHistoryEntry(
           occurredAt: event.occurredAt,
           category: 'event',
@@ -448,7 +508,7 @@ class AppDatabase extends _$AppDatabase {
         )));
 
     entries.sort((first, second) => second.occurredAt.compareTo(first.occurredAt));
-    return AnimalHistory(animal: animal, entries: entries);
+    return AnimalHistory(animal: animal, mother: mother, entries: entries);
   }
 
   String _eventTitle(String eventType) => switch (eventType) {
@@ -471,6 +531,13 @@ class AppDatabase extends _$AppDatabase {
             ..where((row) => row.farmId.equals(id) & row.deletedAt.isNull())
             ..orderBy([(row) => OrderingTerm.desc(row.occurredAt)]))
           .watch();
+    });
+  }
+
+  Stream<List<LambingLamb>> watchLambingLambs({String? farmId}) {
+    final resolvedFarmId = farmId == null ? ensureLocalFarm() : Future<String>.value(farmId);
+    return Stream<String>.fromFuture(resolvedFarmId).asyncExpand((id) {
+      return (select(lambingLambs)..where((row) => row.farmId.equals(id) & row.deletedAt.isNull())).watch();
     });
   }
 
@@ -672,7 +739,16 @@ class AppDatabase extends _$AppDatabase {
         entityType: 'breeding_event',
         entityId: id,
         operation: 'upsert',
-        payload: {'id': id, 'farmId': dam.farmId, 'damId': damId, 'sireId': sireId, 'occurredAt': occurredAt.toUtc().toIso8601String(), 'eventType': eventType, 'outcome': outcome, 'notes': notes.trim()},
+        payload: {
+          'id': id,
+          'farmId': dam.farmId,
+          'damId': damId,
+          'sireId': sireId,
+          'occurredAt': occurredAt.toUtc().toIso8601String(),
+          'eventType': eventType,
+          'outcome': outcome,
+          'notes': notes.trim()
+        },
         createdAt: now,
       );
     });
@@ -753,7 +829,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Ștergere „moale”: rândurile primesc `deletedAt`, deci ștergerea se sincronizează pe toate dispozitivele.
-  /// Fătarea în care animalul este miel rămâne în istoricul mamei.
+  /// O fătare este eliminată doar când nu mai are miei asociați activi.
   Future<void> deleteAnimal(String animalId) async {
     final animal = await _requireAnimal(animalId);
     final now = DateTime.now();
@@ -772,8 +848,25 @@ class AppDatabase extends _$AppDatabase {
       await (update(animalEvents)..where((r) => r.id.isIn(eventIds))).write(AnimalEventsCompanion(deletedAt: Value(now), updatedAt: Value(now), syncState: const Value('pending')));
       final breedingIds = (await (select(breedingEvents)..where((r) => (r.damId.equals(animalId) | r.sireId.equals(animalId)) & r.deletedAt.isNull())).get()).map((r) => r.id).toList();
       await (update(breedingEvents)..where((r) => r.id.isIn(breedingIds))).write(BreedingEventsCompanion(deletedAt: Value(now), updatedAt: Value(now), syncState: const Value('pending')));
-      final lambingIds = (await (select(lambings)..where((r) => r.damId.equals(animalId) & r.deletedAt.isNull())).get()).map((r) => r.id).toList();
-      await (update(lambingLambs)..where((r) => r.lambingId.isIn(lambingIds))).write(LambingLambsCompanion(deletedAt: Value(now), updatedAt: Value(now), syncState: const Value('pending')));
+      final lambingIdsToDelete = <String>{};
+      final lambLinksToDelete = <String>{};
+      final lambingsAsMother = await (select(lambings)..where((r) => r.damId.equals(animalId) & r.deletedAt.isNull())).get();
+      for (final lambing in lambingsAsMother) {
+        lambingIdsToDelete.add(lambing.id);
+        final links = await (select(lambingLambs)..where((r) => r.lambingId.equals(lambing.id) & r.deletedAt.isNull())).get();
+        lambLinksToDelete.addAll(links.map((link) => link.id));
+      }
+
+      final linksForLamb = await (select(lambingLambs)..where((r) => r.animalId.equals(animalId) & r.deletedAt.isNull())).get();
+      for (final link in linksForLamb) {
+        lambLinksToDelete.add(link.id);
+        final remainingLinks = await (select(lambingLambs)..where((r) => r.lambingId.equals(link.lambingId) & r.deletedAt.isNull() & r.id.isNotIn([link.id]))).get();
+        if (remainingLinks.isEmpty) lambingIdsToDelete.add(link.lambingId);
+      }
+
+      final lambingIds = lambingIdsToDelete.toList();
+      final lambLinkIds = lambLinksToDelete.toList();
+      await (update(lambingLambs)..where((r) => r.id.isIn(lambLinkIds))).write(LambingLambsCompanion(deletedAt: Value(now), updatedAt: Value(now), syncState: const Value('pending')));
       await (update(lambings)..where((r) => r.id.isIn(lambingIds))).write(LambingsCompanion(deletedAt: Value(now), updatedAt: Value(now), syncState: const Value('pending')));
       await (update(animals)..where((r) => r.id.equals(animalId))).write(AnimalsCompanion(deletedAt: Value(now), updatedAt: Value(now), syncState: const Value('pending')));
 
@@ -781,8 +874,104 @@ class AppDatabase extends _$AppDatabase {
       await queue('weighing', weighingIds);
       await queue('animal_event', eventIds);
       await queue('breeding_event', breedingIds);
+      await queue('lambing_lamb', lambLinkIds);
       await queue('lambing', lambingIds);
       await queue('animal', [animalId]);
+    });
+  }
+
+  Future<void> restoreAnimal(String animalId) async {
+    final animal = await (select(animals)..where((row) => row.id.equals(animalId) & row.deletedAt.isNotNull())).getSingleOrNull();
+    if (animal == null) throw ArgumentError('Animalul nu există în lista celor șterse.');
+    final deletedAt = animal.deletedAt!;
+    final now = DateTime.now();
+
+    await transaction(() async {
+      final treatmentsToRestore = await (select(treatments)..where((row) => row.animalId.equals(animalId) & row.deletedAt.equals(deletedAt))).get();
+      final weighingsToRestore = await (select(weighings)..where((row) => row.animalId.equals(animalId) & row.deletedAt.equals(deletedAt))).get();
+      final eventsToRestore = await (select(animalEvents)..where((row) => row.animalId.equals(animalId) & row.deletedAt.equals(deletedAt))).get();
+      final breedingToRestore = await (select(breedingEvents)..where((row) => (row.damId.equals(animalId) | row.sireId.equals(animalId)) & row.deletedAt.equals(deletedAt))).get();
+      final lambLinksToRestore = await (select(lambingLambs)..where((row) => row.animalId.equals(animalId) & row.deletedAt.equals(deletedAt))).get();
+      final lambingIds = <String>{
+        ...lambLinksToRestore.map((link) => link.lambingId),
+        ...(await (select(lambings)..where((row) => row.damId.equals(animalId) & row.deletedAt.equals(deletedAt))).get()).map((lambing) => lambing.id),
+      };
+      final lambingsToRestore = lambingIds.isEmpty ? <Lambing>[] : await (select(lambings)..where((row) => row.id.isIn(lambingIds) & row.deletedAt.equals(deletedAt))).get();
+      final linksForLambingsToRestore = lambingIds.isEmpty ? <LambingLamb>[] : await (select(lambingLambs)..where((row) => row.lambingId.isIn(lambingIds) & row.deletedAt.equals(deletedAt))).get();
+
+      await (update(animals)..where((row) => row.id.equals(animalId))).write(AnimalsCompanion(deletedAt: const Value(null), updatedAt: Value(now), syncState: const Value('pending')));
+      await _queueSync(
+          farmId: animal.farmId,
+          entityType: 'animal',
+          entityId: animalId,
+          operation: 'upsert',
+          payload: {...animal.toJson(), 'deletedAt': null, 'updatedAt': now.toUtc().toIso8601String()},
+          createdAt: now);
+
+      for (final treatment in treatmentsToRestore) {
+        await (update(treatments)..where((row) => row.id.equals(treatment.id))).write(TreatmentsCompanion(deletedAt: const Value(null), updatedAt: Value(now), syncState: const Value('pending')));
+        await _queueSync(
+            farmId: animal.farmId,
+            entityType: 'treatment',
+            entityId: treatment.id,
+            operation: 'upsert',
+            payload: {...treatment.toJson(), 'deletedAt': null, 'updatedAt': now.toUtc().toIso8601String()},
+            createdAt: now);
+      }
+      for (final weighing in weighingsToRestore) {
+        await (update(weighings)..where((row) => row.id.equals(weighing.id))).write(WeighingsCompanion(deletedAt: const Value(null), updatedAt: Value(now), syncState: const Value('pending')));
+        await _queueSync(
+            farmId: animal.farmId,
+            entityType: 'weighing',
+            entityId: weighing.id,
+            operation: 'upsert',
+            payload: {...weighing.toJson(), 'deletedAt': null, 'updatedAt': now.toUtc().toIso8601String()},
+            createdAt: now);
+      }
+      for (final event in eventsToRestore) {
+        await (update(animalEvents)..where((row) => row.id.equals(event.id))).write(AnimalEventsCompanion(deletedAt: const Value(null), updatedAt: Value(now), syncState: const Value('pending')));
+        await _queueSync(
+            farmId: animal.farmId,
+            entityType: 'animal_event',
+            entityId: event.id,
+            operation: 'upsert',
+            payload: {...event.toJson(), 'deletedAt': null, 'updatedAt': now.toUtc().toIso8601String()},
+            createdAt: now);
+      }
+      for (final event in breedingToRestore) {
+        await (update(breedingEvents)..where((row) => row.id.equals(event.id))).write(BreedingEventsCompanion(deletedAt: const Value(null), updatedAt: Value(now), syncState: const Value('pending')));
+        await _queueSync(
+            farmId: animal.farmId,
+            entityType: 'breeding_event',
+            entityId: event.id,
+            operation: 'upsert',
+            payload: {...event.toJson(), 'deletedAt': null, 'updatedAt': now.toUtc().toIso8601String()},
+            createdAt: now);
+      }
+      for (final lambing in lambingsToRestore) {
+        await (update(lambings)..where((row) => row.id.equals(lambing.id))).write(LambingsCompanion(deletedAt: const Value(null), updatedAt: Value(now), syncState: const Value('pending')));
+        await _queueSync(
+            farmId: animal.farmId,
+            entityType: 'lambing',
+            entityId: lambing.id,
+            operation: 'upsert',
+            payload: {...lambing.toJson(), 'deletedAt': null, 'updatedAt': now.toUtc().toIso8601String()},
+            createdAt: now);
+      }
+      final linkIds = {...lambLinksToRestore.map((link) => link.id), ...linksForLambingsToRestore.map((link) => link.id)};
+      if (linkIds.isNotEmpty) {
+        final links = await (select(lambingLambs)..where((row) => row.id.isIn(linkIds))).get();
+        await (update(lambingLambs)..where((row) => row.id.isIn(linkIds))).write(LambingLambsCompanion(deletedAt: const Value(null), updatedAt: Value(now), syncState: const Value('pending')));
+        for (final link in links) {
+          await _queueSync(
+              farmId: animal.farmId,
+              entityType: 'lambing_lamb',
+              entityId: link.id,
+              operation: 'upsert',
+              payload: {...link.toJson(), 'deletedAt': null, 'updatedAt': now.toUtc().toIso8601String()},
+              createdAt: now);
+        }
+      }
     });
   }
 
@@ -931,9 +1120,7 @@ class AppDatabase extends _$AppDatabase {
     if (dam == null || dam.sex != 'Femelă' || dam.status != 'active') {
       throw ArgumentError('Mama selectată nu există, nu este activă sau nu este femelă.');
     }
-    final sire = sireId == null
-        ? null
-        : await (select(animals)..where((animal) => animal.id.equals(sireId))).getSingleOrNull();
+    final sire = sireId == null ? null : await (select(animals)..where((animal) => animal.id.equals(sireId))).getSingleOrNull();
     if (sireId != null && (sire == null || sire.sex != 'Mascul' || sire.status != 'active' || sire.farmId != dam.farmId)) {
       throw ArgumentError('Tatăl selectat nu există, nu este activ, nu este mascul sau aparține altei gospodării.');
     }
@@ -1062,9 +1249,10 @@ class LambBirth {
 }
 
 class AnimalHistory {
-  const AnimalHistory({required this.animal, required this.entries});
+  const AnimalHistory({required this.animal, this.mother, required this.entries});
 
   final Animal animal;
+  final Animal? mother;
   final List<AnimalHistoryEntry> entries;
 }
 

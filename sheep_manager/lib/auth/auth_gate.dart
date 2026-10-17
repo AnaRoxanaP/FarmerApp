@@ -199,7 +199,9 @@ class _FarmGateState extends State<FarmGate> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  const Text('Nu am putut verifica gospodăria. Verifică internetul.', textAlign: TextAlign.center),
+                  const Text('Nu am putut verifica gospodăria. Verifică internetul sau actualizarea bazei locale.', textAlign: TextAlign.center),
+                  const SizedBox(height: 8),
+                  Text('${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: Colors.black54)),
                   const SizedBox(height: 12),
                   FilledButton(onPressed: _reload, child: const Text('Încearcă din nou')),
                   TextButton(onPressed: () => FirebaseAuth.instance.signOut(), child: const Text('Ieși din cont')),
