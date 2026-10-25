@@ -181,11 +181,8 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
         'all' => animals.where((animal) => animal.deletedAt == null).toList(),
         _ => animals.where((animal) => animal.deletedAt == null && animal.status == _statusFilter).toList(),
       };
-  // Miel = animal sub un an; fără dată a nașterii, animalul se consideră adult.
-  bool _isLamb(Animal animal) {
-    final born = animal.birthDate;
-    return born != null && DateTime.now().difference(born).inDays < 365;
-  }
+  // Miel = marcat ca miel (fătat sau adăugat manual) și sub un an; animalele vechi fără categorie se deduc din data nașterii.
+  bool _isLamb(Animal animal) => animal.isLamb;
 
   List<Animal> _filterGroup(List<Animal> animals) => switch (_group) {
         'lambs' => animals.where(_isLamb).toList(),
@@ -484,16 +481,18 @@ class _LambingsScreenState extends State<LambingsScreen> {
                         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           CircleAvatar(backgroundColor: const Color(0xFFFAF0D6), child: Icon(isAdoption ? Icons.volunteer_activism_outlined : Icons.child_friendly_rounded, color: const Color(0xFFB5831D))),
                           const SizedBox(width: 12),
-                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Expanded(child: InkWell(
+                            onTap: mother == null ? null : () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AnimalDetailScreen(database: widget.database, animalId: mother.id))),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(formatDate(record.occurredAt), style: const TextStyle(fontSize: 11, color: _muted)),
                             const SizedBox(height: 3),
-                            Text(mother?.name ?? 'Mamă necunoscută', style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
+                            Text(mother?.name ?? 'Mamă necunoscută', style: TextStyle(fontWeight: FontWeight.w800, color: mother == null ? const Color(0xFF18352B) : _leaf, decoration: mother == null ? null : TextDecoration.underline)),
                             if (mother != null) Text('Crotaliu ${mother.earTag}', style: const TextStyle(fontSize: 10, color: _muted)),
                             if (details.isNotEmpty) ...[
                               const SizedBox(height: 5),
                               Text(details, style: const TextStyle(fontSize: 11, color: _muted)),
                             ],
-                          ])),
+                          ]))),
                           const SizedBox(width: 10),
                           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                             const Text('Miel / miei', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _muted)),
@@ -505,7 +504,7 @@ class _LambingsScreenState extends State<LambingsScreen> {
                                 onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AnimalDetailScreen(database: widget.database, animalId: lamb.id))),
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(vertical: 2),
-                                  child: Text('${lamb.name.isEmpty ? 'Miel' : lamb.name} · ${lamb.earTag}', textAlign: TextAlign.end, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _leaf)),
+                                  child: Text('${lamb.name.isEmpty ? 'Miel' : lamb.name} · ${lamb.earTag}${!isAdoption && lamb.biologicalDamId == record.damId && lamb.damId != record.damId ? '\n(dat spre adopție la ${byId[lamb.damId]?.name ?? 'altă oaie'})' : ''}', textAlign: TextAlign.end, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _leaf)),
                                 ),
                               ),
                             if (dead > 0)
@@ -1244,7 +1243,9 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
     );
     search.dispose();
     if (chosen == null || !mounted) return;
-    await widget.database.adoptLamb(lambId: lamb.id, adoptiveDamId: chosen.id);
+    final adoptedAt = await pickDate(context, initial: DateTime.now(), first: lamb.birthDate ?? DateTime(2000), last: DateTime.now());
+    if (adoptedAt == null || !mounted) return;
+    await widget.database.adoptLamb(lambId: lamb.id, adoptiveDamId: chosen.id, adoptedAt: adoptedAt);
     if (!mounted) return;
     setState(() => _historyFuture = widget.database.loadAnimalHistory(widget.animalId));
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Mielul a fost trecut la ${chosen.name}.')));
@@ -1363,6 +1364,10 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
                         const SizedBox(height: 12),
                         _DetailField(label: 'DATA NAȘTERII', value: _dateText(context, animal.birthDate!)),
                       ],
+                      if (history.birthType != null) ...[
+                        const SizedBox(height: 12),
+                        _DetailField(label: 'NĂSCUT DIN', value: lambingTypeLabel(history.birthType!)),
+                      ],
                       const SizedBox(height: 12),
                       Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                         Expanded(child: _DetailField(label: 'STARE', value: animal.deletedAt == null ? _statusText(animal.status) : 'Șters')),
@@ -1404,7 +1409,7 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
                       ]),
                     ),
                   ],
-                  if (animal.deletedAt == null && animal.status == 'active')
+                  if (animal.deletedAt == null && animal.status == 'active' && animal.isLamb)
                     Align(
                       alignment: Alignment.centerLeft,
                       child: TextButton.icon(
@@ -1444,8 +1449,37 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
                         contentPadding: const EdgeInsets.symmetric(vertical: 5),
                         leading: CircleAvatar(backgroundColor: style.$2, child: Icon(style.$1, color: style.$3, size: 19)),
                         title: Text(entry.title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF18352B))),
-                        subtitle: Text('${_dateText(context, entry.occurredAt)}${entry.detail.isEmpty ? '' : '\n${entry.detail}'}', style: const TextStyle(fontSize: 11, height: 1.5, color: _muted)),
-                        isThreeLine: entry.detail.contains('\n'),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${_dateText(context, entry.occurredAt)}${entry.detail.isEmpty ? '' : '\n${entry.detail}'}', style: const TextStyle(fontSize: 11, height: 1.5, color: _muted)),
+                            for (final lamb in entry.linkedAnimals)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: InkWell(
+                                  onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                                    builder: (_) => AnimalDetailScreen(database: widget.database, animalId: lamb.id),
+                                  )),
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 3),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.open_in_new_rounded, size: 13, color: _leaf),
+                                        const SizedBox(width: 5),
+                                        Expanded(
+                                          child: Text(
+                                            '${lamb.name.isEmpty ? 'Miel' : lamb.name} · ${lamb.sex}${lamb.earTag.isEmpty ? '' : ' · ${lamb.earTag}'}',
+                                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _leaf),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       );
                     },
                   ),
@@ -1533,6 +1567,7 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
   EarMarks _earMarks = const EarMarks();
   String _sex = 'Femelă';
   DateTime? _birthDate;
+  String _ageGroup = 'adult';
   bool _saving = false;
 
   @override
@@ -1540,6 +1575,7 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
     super.initState();
     final animal = widget.animal;
     if (animal != null) {
+      _ageGroup = animal.isLamb ? 'lamb' : 'adult';
       _name.text = animal.name;
       _breed.text = animal.breed;
       _earTag.text = animal.earTag;
@@ -1587,6 +1623,7 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
           mark: _mark.text,
           earMarks: _earMarks.encode(),
           birthDate: _birthDate,
+          ageGroup: _ageGroup,
         );
       } else {
         final oldGeneratedName = 'Miel ${existingAnimal.earTag}';
@@ -1602,6 +1639,7 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
           mark: _mark.text,
           earMarks: _earMarks.encode(),
           birthDate: _birthDate,
+          ageGroup: _ageGroup,
         );
       }
       if (mounted) Navigator.of(context).pop(true);
@@ -1642,6 +1680,9 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
               _FormLabel(label: 'Nume sau descriere'),
               TextFormField(controller: _name, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(hintText: 'De ex. Mioara'), validator: _required),
               const SizedBox(height: 15),
+              const _FormLabel(label: 'Categorie'),
+              SegmentedButton<String>(segments: const [ButtonSegment(value: 'adult', label: Text('Oaie / berbec')), ButtonSegment(value: 'lamb', label: Text('Miel'))], selected: {_ageGroup}, onSelectionChanged: (selection) => setState(() => _ageGroup = selection.first)),
+              const SizedBox(height: 14),
               const _FormLabel(label: 'Sex'),
               SegmentedButton<String>(segments: const [ButtonSegment(value: 'Femelă', label: Text('Femelă')), ButtonSegment(value: 'Mascul', label: Text('Mascul'))], selected: {_sex}, onSelectionChanged: (selection) => setState(() => _sex = selection.first)),
               const SizedBox(height: 15),

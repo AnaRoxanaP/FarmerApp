@@ -49,6 +49,8 @@ class Animals extends Table {
   TextColumn get sireId => text().nullable().references(Animals, #id)();
   // Mama care a fătat mielul, când acesta a fost adoptat de altă oaie.
   TextColumn get biologicalDamId => text().nullable()();
+  // 'lamb' sau 'adult'; null la animalele vechi (se deduce din data nașterii).
+  TextColumn get ageGroup => text().nullable()();
   TextColumn get origin => text().withDefault(const Constant('born'))();
   DateTimeColumn get createdAt => dateTime().clientDefault(DateTime.now)();
   DateTimeColumn get updatedAt => dateTime().clientDefault(DateTime.now)();
@@ -244,7 +246,7 @@ class AppDatabase extends _$AppDatabase {
   static const _localFarmSettingKey = 'local_farm_id';
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -359,6 +361,9 @@ class AppDatabase extends _$AppDatabase {
             await _addColumnIfMissing('lambings', 'kind', 'TEXT');
             await _addColumnIfMissing('animals', 'biological_dam_id', 'TEXT');
           }
+          if (from < 6) {
+            await _addColumnIfMissing('animals', 'age_group', 'TEXT');
+          }
         },
         beforeOpen: (_) async {
           await customStatement('PRAGMA foreign_keys = ON');
@@ -453,6 +458,18 @@ class AppDatabase extends _$AppDatabase {
     final mother = animal.damId == null ? null : await (select(animals)..where((row) => row.id.equals(animal.damId!))).getSingleOrNull();
 
     final entries = <AnimalHistoryEntry>[];
+    String? birthType;
+    final ownLinks = await (select(lambingLambs)..where((row) => row.animalId.equals(animalId) & row.deletedAt.isNull())).get();
+    for (final link in ownLinks) {
+      final linked = await (select(lambings)..where((row) => row.id.equals(link.lambingId) & row.deletedAt.isNull())).getSingleOrNull();
+      if (linked == null) continue;
+      if (linked.kind == 'adoption') {
+        final adopter = await (select(animals)..where((row) => row.id.equals(linked.damId))).getSingleOrNull();
+        entries.add(AnimalHistoryEntry(occurredAt: linked.occurredAt, category: 'lambing', title: 'Adoptat(ă)', detail: 'Mama adoptivă: ${adopter?.name ?? 'necunoscută'}'));
+      } else if (lambingTypeLabel(linked.birthType).isNotEmpty) {
+        birthType = linked.birthType;
+      }
+    }
     if (animal.birthDate != null && (animal.damId != null || animal.sireId != null)) {
       final parentIds = [animal.damId, animal.sireId, animal.biologicalDamId].whereType<String>().toList();
       final parents = await (select(animals)..where((row) => row.id.isIn(parentIds))).get();
@@ -461,6 +478,7 @@ class AppDatabase extends _$AppDatabase {
         if (animal.damId != null) 'Mama${animal.biologicalDamId != null ? ' adoptivă' : ''}: ${parentNames[animal.damId] ?? 'necunoscută'}',
         if (animal.biologicalDamId != null) 'Mama biologică: ${parentNames[animal.biologicalDamId] ?? 'necunoscută'}',
         if (animal.sireId != null) 'Tatăl: ${parentNames[animal.sireId] ?? 'necunoscut'}',
+        if (birthType != null) 'Născut din: ${lambingTypeLabel(birthType).toLowerCase()}',
       ].join(' · ');
       entries.add(AnimalHistoryEntry(
         occurredAt: animal.birthDate!,
@@ -474,29 +492,34 @@ class AppDatabase extends _$AppDatabase {
           ..where((row) => row.damId.equals(animalId) & row.deletedAt.isNull())
           ..orderBy([(row) => OrderingTerm.desc(row.occurredAt)]))
         .get();
-    final adoptedAway = await (select(animals)..where((row) => row.biologicalDamId.equals(animalId))).get();
     for (final lambing in animalLambings) {
       final lambLinks = await (select(lambingLambs)..where((row) => row.lambingId.equals(lambing.id) & row.deletedAt.isNull())).get();
       final lambIds = lambLinks.map((link) => link.animalId).toList();
       final lambAnimals = lambIds.isEmpty ? <Animal>[] : await (select(animals)..where((row) => row.id.isIn(lambIds))).get();
-      final lambNames = {for (final lamb in lambAnimals) lamb.id: lamb.name};
-      final names = lambLinks.map((link) => lambNames[link.animalId] ?? 'Miel').join(', ');
+      final lambById = {for (final lamb in lambAnimals) lamb.id: lamb};
       final typeLabel = lambingTypeLabel(lambing.birthType);
       final dead = lambing.deadLambs ?? 0;
       if (lambing.kind == 'adoption') {
+        final names = lambLinks.map((link) => lambById[link.animalId]?.name ?? 'Miel').join(', ');
         entries.add(AnimalHistoryEntry(
           occurredAt: lambing.occurredAt,
           category: 'lambing',
           title: 'A adoptat un miel',
           detail: [names, if (typeLabel.isNotEmpty) 'provine din ${typeLabel.toLowerCase()}', lambing.notes].where((value) => value.isNotEmpty).join(' · '),
+          linkedAnimals: lambLinks.map((link) => lambById[link.animalId]).whereType<Animal>().toList(),
         ));
         continue;
       }
-      final adoptedNames = adoptedAway
-          .where((lamb) => lamb.birthDate != null && lamb.birthDate!.year == lambing.occurredAt.year && lamb.birthDate!.month == lambing.occurredAt.month && lamb.birthDate!.day == lambing.occurredAt.day)
-          .map((lamb) => lamb.name)
-          .toList();
-      final total = lambLinks.length + dead + adoptedNames.length;
+      final adoptiveIds = {for (final lamb in lambAnimals) if (lamb.biologicalDamId == animalId && lamb.damId != null) lamb.damId!};
+      final adoptives = adoptiveIds.isEmpty ? <Animal>[] : await (select(animals)..where((row) => row.id.isIn(adoptiveIds))).get();
+      final adoptiveNames = {for (final a in adoptives) a.id: a.name};
+      final names = lambLinks.map((link) {
+        final lamb = lambById[link.animalId];
+        if (lamb == null) return 'Miel';
+        final given = lamb.biologicalDamId == animalId && lamb.damId != null;
+        return given ? '${lamb.name} (dat spre adopție la ${adoptiveNames[lamb.damId] ?? 'altă oaie'})' : lamb.name;
+      }).join(', ');
+      final total = lambLinks.length + dead;
       entries.add(AnimalHistoryEntry(
         occurredAt: lambing.occurredAt,
         category: 'lambing',
@@ -504,10 +527,10 @@ class AppDatabase extends _$AppDatabase {
         detail: [
           names,
           if (dead > 0) '$dead ${dead == 1 ? 'miel mort' : 'miei morți'}',
-          if (adoptedNames.isNotEmpty) 'adoptat de altă oaie: ${adoptedNames.join(', ')}',
           typeLabel,
           lambing.notes,
         ].where((value) => value.isNotEmpty).join(' · '),
+        linkedAnimals: lambLinks.map((link) => lambById[link.animalId]).whereType<Animal>().toList(),
       ));
     }
 
@@ -549,7 +572,7 @@ class AppDatabase extends _$AppDatabase {
         )));
 
     entries.sort((first, second) => second.occurredAt.compareTo(first.occurredAt));
-    return AnimalHistory(animal: animal, mother: mother, entries: entries);
+    return AnimalHistory(animal: animal, mother: mother, entries: entries, birthType: birthType);
   }
 
   String _eventTitle(String eventType) => switch (eventType) {
@@ -1033,6 +1056,7 @@ class AppDatabase extends _$AppDatabase {
     required String mark,
     String? earMarks,
     DateTime? birthDate,
+    String? ageGroup,
   }) async {
     final now = DateTime.now();
     final farmId = await ensureLocalFarm();
@@ -1047,6 +1071,7 @@ class AppDatabase extends _$AppDatabase {
         mark: Value(mark.trim()),
         earMarks: Value(earMarks),
         birthDate: Value(birthDate),
+        ageGroup: Value(ageGroup),
         createdAt: Value(now),
         updatedAt: Value(now),
       ));
@@ -1065,6 +1090,7 @@ class AppDatabase extends _$AppDatabase {
           'mark': mark.trim(),
           'earMarks': earMarks,
           'birthDate': birthDate?.toUtc().toIso8601String(),
+          'ageGroup': ageGroup,
           'createdAt': now.toUtc().toIso8601String(),
           'updatedAt': now.toUtc().toIso8601String(),
         },
@@ -1082,6 +1108,7 @@ class AppDatabase extends _$AppDatabase {
     required String mark,
     String? earMarks,
     DateTime? birthDate,
+    String? ageGroup,
   }) async {
     final animal = await _requireAnimal(id);
     final now = DateTime.now();
@@ -1097,6 +1124,7 @@ class AppDatabase extends _$AppDatabase {
         mark: Value(mark.trim()),
         earMarks: Value(earMarks),
         birthDate: Value(birthDate),
+        ageGroup: Value(ageGroup ?? animal.ageGroup),
         updatedAt: Value(now),
         syncState: const Value('pending'),
       ));
@@ -1106,6 +1134,7 @@ class AppDatabase extends _$AppDatabase {
         entityId: id,
         operation: 'upsert',
         payload: {
+          'ageGroup': ageGroup ?? animal.ageGroup,
           'id': id,
           'farmId': animal.farmId,
           'name': name.trim(),
@@ -1205,6 +1234,7 @@ class AppDatabase extends _$AppDatabase {
           damId: Value(damId),
           sireId: Value(sireId),
           origin: const Value('born'),
+          ageGroup: const Value('lamb'),
           createdAt: Value(now),
           updatedAt: Value(now),
         ));
@@ -1253,11 +1283,12 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  /// Un miel este crescut de altă oaie. Mielul trece la mama adoptivă în registrul de fătări,
-  /// iar mama biologică rămâne păstrată în fișa lui.
-  Future<void> adoptLamb({required String lambId, required String adoptiveDamId}) async {
+  /// Un miel este crescut de altă oaie. Fătarea originală rămâne la mama biologică (mielul apare ca „dat spre adopție”),
+  /// iar la mama adoptivă se adaugă o înregistrare de adopție la data [adoptedAt].
+  Future<void> adoptLamb({required String lambId, required String adoptiveDamId, DateTime? adoptedAt}) async {
     final lamb = await _requireAnimal(lambId);
     final adoptive = await _requireAnimal(adoptiveDamId);
+    if (!lamb.isLamb) throw ArgumentError('Doar mieii pot avea mamă adoptivă.');
     if (adoptive.sex != 'Femelă' || adoptive.status != 'active') {
       throw ArgumentError('Mama adoptivă trebuie să fie o femelă din turmă.');
     }
@@ -1266,31 +1297,26 @@ class AppDatabase extends _$AppDatabase {
     }
     final now = DateTime.now();
     final lambingId = const Uuid().v4();
+    final linkId = const Uuid().v4();
     final biologicalDamId = lamb.biologicalDamId ?? lamb.damId;
     await transaction(() async {
       final links = await (select(lambingLambs)..where((r) => r.animalId.equals(lambId) & r.deletedAt.isNull())).get();
       String? originalType;
-      if (links.isNotEmpty) {
-        final original = await (select(lambings)..where((r) => r.id.equals(links.first.lambingId))).getSingleOrNull();
-        originalType = original?.birthType;
+      for (final link in links) {
+        final original = await (select(lambings)..where((r) => r.id.equals(link.lambingId) & r.deletedAt.isNull())).getSingleOrNull();
+        if (original != null && original.kind != 'adoption') originalType = original.birthType;
       }
       await into(lambings).insert(LambingsCompanion.insert(
         id: lambingId,
         farmId: lamb.farmId,
         damId: adoptiveDamId,
-        occurredAt: lamb.birthDate ?? now,
+        occurredAt: adoptedAt ?? now,
         birthType: Value(originalType ?? 'unknown'),
         kind: const Value('adoption'),
         createdAt: Value(now),
         updatedAt: Value(now),
       ));
-      if (links.isEmpty) {
-        await into(lambingLambs).insert(LambingLambsCompanion.insert(id: const Uuid().v4(), farmId: lamb.farmId, lambingId: lambingId, animalId: lambId, createdAt: Value(now), updatedAt: Value(now)));
-      } else {
-        for (final link in links) {
-          await (update(lambingLambs)..where((r) => r.id.equals(link.id))).write(LambingLambsCompanion(lambingId: Value(lambingId), updatedAt: Value(now), syncState: const Value('pending')));
-        }
-      }
+      await into(lambingLambs).insert(LambingLambsCompanion.insert(id: linkId, farmId: lamb.farmId, lambingId: lambingId, animalId: lambId, createdAt: Value(now), updatedAt: Value(now)));
       await (update(animals)..where((r) => r.id.equals(lambId))).write(AnimalsCompanion(
         damId: Value(adoptiveDamId),
         biologicalDamId: Value(biologicalDamId),
@@ -1299,9 +1325,7 @@ class AppDatabase extends _$AppDatabase {
       ));
       await _queueSync(farmId: lamb.farmId, entityType: 'animal', entityId: lambId, operation: 'upsert', payload: {'id': lambId}, createdAt: now);
       await _queueSync(farmId: lamb.farmId, entityType: 'lambing', entityId: lambingId, operation: 'upsert', payload: {'id': lambingId}, createdAt: now);
-      for (final link in links) {
-        await _queueSync(farmId: lamb.farmId, entityType: 'lambing_lamb', entityId: link.id, operation: 'upsert', payload: {'id': link.id}, createdAt: now);
-      }
+      await _queueSync(farmId: lamb.farmId, entityType: 'lambing_lamb', entityId: linkId, operation: 'upsert', payload: {'id': linkId}, createdAt: now);
     });
   }
 
@@ -1341,6 +1365,17 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
+extension AnimalAgeGroup on Animal {
+  /// Miel: marcat explicit ca miel și sub un an, sau (fără marcaj) născut în ultimul an.
+  bool get isLamb {
+    final born = birthDate;
+    final underOneYear = born == null || DateTime.now().difference(born).inDays < 365;
+    if (ageGroup == 'lamb') return underOneYear;
+    if (ageGroup == 'adult') return false;
+    return born != null && underOneYear;
+  }
+}
+
 /// Eticheta în română a tipului de fătare; adopțiile păstrează tipul fătării originale.
 String lambingTypeLabel(String type) => switch (type) {
       'single' => 'Un miel',
@@ -1371,18 +1406,26 @@ class LambBirth {
 }
 
 class AnimalHistory {
-  const AnimalHistory({required this.animal, this.mother, required this.entries});
+  const AnimalHistory({required this.animal, this.mother, required this.entries, this.birthType});
 
+  final String? birthType;
   final Animal animal;
   final Animal? mother;
   final List<AnimalHistoryEntry> entries;
 }
 
 class AnimalHistoryEntry {
-  const AnimalHistoryEntry({required this.occurredAt, required this.category, required this.title, required this.detail});
+  const AnimalHistoryEntry({
+    required this.occurredAt,
+    required this.category,
+    required this.title,
+    required this.detail,
+    this.linkedAnimals = const [],
+  });
 
   final DateTime occurredAt;
   final String category;
   final String title;
   final String detail;
+  final List<Animal> linkedAnimals;
 }

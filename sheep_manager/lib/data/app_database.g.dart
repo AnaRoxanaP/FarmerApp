@@ -749,6 +749,12 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
   late final GeneratedColumn<String> biologicalDamId = GeneratedColumn<String>(
       'biological_dam_id', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _ageGroupMeta =
+      const VerificationMeta('ageGroup');
+  @override
+  late final GeneratedColumn<String> ageGroup = GeneratedColumn<String>(
+      'age_group', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _originMeta = const VerificationMeta('origin');
   @override
   late final GeneratedColumn<String> origin = GeneratedColumn<String>(
@@ -820,6 +826,7 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
         damId,
         sireId,
         biologicalDamId,
+        ageGroup,
         origin,
         createdAt,
         updatedAt,
@@ -906,6 +913,10 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
           biologicalDamId.isAcceptableOrUnknown(
               data['biological_dam_id']!, _biologicalDamIdMeta));
     }
+    if (data.containsKey('age_group')) {
+      context.handle(_ageGroupMeta,
+          ageGroup.isAcceptableOrUnknown(data['age_group']!, _ageGroupMeta));
+    }
     if (data.containsKey('origin')) {
       context.handle(_originMeta,
           origin.isAcceptableOrUnknown(data['origin']!, _originMeta));
@@ -973,6 +984,8 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
           .read(DriftSqlType.string, data['${effectivePrefix}sire_id']),
       biologicalDamId: attachedDatabase.typeMapping.read(
           DriftSqlType.string, data['${effectivePrefix}biological_dam_id']),
+      ageGroup: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}age_group']),
       origin: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}origin'])!,
       createdAt: attachedDatabase.typeMapping
@@ -1012,6 +1025,7 @@ class Animal extends DataClass implements Insertable<Animal> {
   final String? damId;
   final String? sireId;
   final String? biologicalDamId;
+  final String? ageGroup;
   final String origin;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -1034,6 +1048,7 @@ class Animal extends DataClass implements Insertable<Animal> {
       this.damId,
       this.sireId,
       this.biologicalDamId,
+      this.ageGroup,
       required this.origin,
       required this.createdAt,
       required this.updatedAt,
@@ -1069,6 +1084,9 @@ class Animal extends DataClass implements Insertable<Animal> {
     }
     if (!nullToAbsent || biologicalDamId != null) {
       map['biological_dam_id'] = Variable<String>(biologicalDamId);
+    }
+    if (!nullToAbsent || ageGroup != null) {
+      map['age_group'] = Variable<String>(ageGroup);
     }
     map['origin'] = Variable<String>(origin);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -1112,6 +1130,9 @@ class Animal extends DataClass implements Insertable<Animal> {
       biologicalDamId: biologicalDamId == null && nullToAbsent
           ? const Value.absent()
           : Value(biologicalDamId),
+      ageGroup: ageGroup == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ageGroup),
       origin: Value(origin),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -1146,6 +1167,7 @@ class Animal extends DataClass implements Insertable<Animal> {
       damId: serializer.fromJson<String?>(json['damId']),
       sireId: serializer.fromJson<String?>(json['sireId']),
       biologicalDamId: serializer.fromJson<String?>(json['biologicalDamId']),
+      ageGroup: serializer.fromJson<String?>(json['ageGroup']),
       origin: serializer.fromJson<String>(json['origin']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -1173,6 +1195,7 @@ class Animal extends DataClass implements Insertable<Animal> {
       'damId': serializer.toJson<String?>(damId),
       'sireId': serializer.toJson<String?>(sireId),
       'biologicalDamId': serializer.toJson<String?>(biologicalDamId),
+      'ageGroup': serializer.toJson<String?>(ageGroup),
       'origin': serializer.toJson<String>(origin),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -1198,6 +1221,7 @@ class Animal extends DataClass implements Insertable<Animal> {
           Value<String?> damId = const Value.absent(),
           Value<String?> sireId = const Value.absent(),
           Value<String?> biologicalDamId = const Value.absent(),
+          Value<String?> ageGroup = const Value.absent(),
           String? origin,
           DateTime? createdAt,
           DateTime? updatedAt,
@@ -1223,6 +1247,7 @@ class Animal extends DataClass implements Insertable<Animal> {
         biologicalDamId: biologicalDamId.present
             ? biologicalDamId.value
             : this.biologicalDamId,
+        ageGroup: ageGroup.present ? ageGroup.value : this.ageGroup,
         origin: origin ?? this.origin,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
@@ -1251,6 +1276,7 @@ class Animal extends DataClass implements Insertable<Animal> {
       biologicalDamId: data.biologicalDamId.present
           ? data.biologicalDamId.value
           : this.biologicalDamId,
+      ageGroup: data.ageGroup.present ? data.ageGroup.value : this.ageGroup,
       origin: data.origin.present ? data.origin.value : this.origin,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -1278,6 +1304,7 @@ class Animal extends DataClass implements Insertable<Animal> {
           ..write('damId: $damId, ')
           ..write('sireId: $sireId, ')
           ..write('biologicalDamId: $biologicalDamId, ')
+          ..write('ageGroup: $ageGroup, ')
           ..write('origin: $origin, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -1305,6 +1332,7 @@ class Animal extends DataClass implements Insertable<Animal> {
         damId,
         sireId,
         biologicalDamId,
+        ageGroup,
         origin,
         createdAt,
         updatedAt,
@@ -1331,6 +1359,7 @@ class Animal extends DataClass implements Insertable<Animal> {
           other.damId == this.damId &&
           other.sireId == this.sireId &&
           other.biologicalDamId == this.biologicalDamId &&
+          other.ageGroup == this.ageGroup &&
           other.origin == this.origin &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
@@ -1355,6 +1384,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
   final Value<String?> damId;
   final Value<String?> sireId;
   final Value<String?> biologicalDamId;
+  final Value<String?> ageGroup;
   final Value<String> origin;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -1378,6 +1408,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     this.damId = const Value.absent(),
     this.sireId = const Value.absent(),
     this.biologicalDamId = const Value.absent(),
+    this.ageGroup = const Value.absent(),
     this.origin = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -1402,6 +1433,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     this.damId = const Value.absent(),
     this.sireId = const Value.absent(),
     this.biologicalDamId = const Value.absent(),
+    this.ageGroup = const Value.absent(),
     this.origin = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -1431,6 +1463,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     Expression<String>? damId,
     Expression<String>? sireId,
     Expression<String>? biologicalDamId,
+    Expression<String>? ageGroup,
     Expression<String>? origin,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -1455,6 +1488,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
       if (damId != null) 'dam_id': damId,
       if (sireId != null) 'sire_id': sireId,
       if (biologicalDamId != null) 'biological_dam_id': biologicalDamId,
+      if (ageGroup != null) 'age_group': ageGroup,
       if (origin != null) 'origin': origin,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -1481,6 +1515,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
       Value<String?>? damId,
       Value<String?>? sireId,
       Value<String?>? biologicalDamId,
+      Value<String?>? ageGroup,
       Value<String>? origin,
       Value<DateTime>? createdAt,
       Value<DateTime>? updatedAt,
@@ -1504,6 +1539,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
       damId: damId ?? this.damId,
       sireId: sireId ?? this.sireId,
       biologicalDamId: biologicalDamId ?? this.biologicalDamId,
+      ageGroup: ageGroup ?? this.ageGroup,
       origin: origin ?? this.origin,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -1558,6 +1594,9 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     if (biologicalDamId.present) {
       map['biological_dam_id'] = Variable<String>(biologicalDamId.value);
     }
+    if (ageGroup.present) {
+      map['age_group'] = Variable<String>(ageGroup.value);
+    }
     if (origin.present) {
       map['origin'] = Variable<String>(origin.value);
     }
@@ -1604,6 +1643,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
           ..write('damId: $damId, ')
           ..write('sireId: $sireId, ')
           ..write('biologicalDamId: $biologicalDamId, ')
+          ..write('ageGroup: $ageGroup, ')
           ..write('origin: $origin, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -7580,6 +7620,7 @@ typedef $$AnimalsTableCreateCompanionBuilder = AnimalsCompanion Function({
   Value<String?> damId,
   Value<String?> sireId,
   Value<String?> biologicalDamId,
+  Value<String?> ageGroup,
   Value<String> origin,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
@@ -7604,6 +7645,7 @@ typedef $$AnimalsTableUpdateCompanionBuilder = AnimalsCompanion Function({
   Value<String?> damId,
   Value<String?> sireId,
   Value<String?> biologicalDamId,
+  Value<String?> ageGroup,
   Value<String> origin,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
@@ -7758,6 +7800,9 @@ class $$AnimalsTableFilterComposer
   ColumnFilters<String> get biologicalDamId => $composableBuilder(
       column: $table.biologicalDamId,
       builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get ageGroup => $composableBuilder(
+      column: $table.ageGroup, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get origin => $composableBuilder(
       column: $table.origin, builder: (column) => ColumnFilters(column));
@@ -7969,6 +8014,9 @@ class $$AnimalsTableOrderingComposer
       column: $table.biologicalDamId,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get ageGroup => $composableBuilder(
+      column: $table.ageGroup, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get origin => $composableBuilder(
       column: $table.origin, builder: (column) => ColumnOrderings(column));
 
@@ -8092,6 +8140,9 @@ class $$AnimalsTableAnnotationComposer
 
   GeneratedColumn<String> get biologicalDamId => $composableBuilder(
       column: $table.biologicalDamId, builder: (column) => column);
+
+  GeneratedColumn<String> get ageGroup =>
+      $composableBuilder(column: $table.ageGroup, builder: (column) => column);
 
   GeneratedColumn<String> get origin =>
       $composableBuilder(column: $table.origin, builder: (column) => column);
@@ -8305,6 +8356,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
             Value<String?> damId = const Value.absent(),
             Value<String?> sireId = const Value.absent(),
             Value<String?> biologicalDamId = const Value.absent(),
+            Value<String?> ageGroup = const Value.absent(),
             Value<String> origin = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -8329,6 +8381,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
             damId: damId,
             sireId: sireId,
             biologicalDamId: biologicalDamId,
+            ageGroup: ageGroup,
             origin: origin,
             createdAt: createdAt,
             updatedAt: updatedAt,
@@ -8353,6 +8406,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
             Value<String?> damId = const Value.absent(),
             Value<String?> sireId = const Value.absent(),
             Value<String?> biologicalDamId = const Value.absent(),
+            Value<String?> ageGroup = const Value.absent(),
             Value<String> origin = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -8377,6 +8431,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
             damId: damId,
             sireId: sireId,
             biologicalDamId: biologicalDamId,
+            ageGroup: ageGroup,
             origin: origin,
             createdAt: createdAt,
             updatedAt: updatedAt,

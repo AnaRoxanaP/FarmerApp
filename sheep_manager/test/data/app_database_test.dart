@@ -58,14 +58,32 @@ void main() {
     expect(adopted.damId, 'dam-2');
     expect(adopted.biologicalDamId, damId);
     final links = await (database.select(database.lambingLambs)..where((l) => l.animalId.equals(twin.id))).get();
-    final adoptionLambing = await (database.select(database.lambings)..where((l) => l.id.equals(links.single.lambingId))).getSingle();
-    expect(adoptionLambing.damId, 'dam-2');
-    expect(adoptionLambing.kind, 'adoption');
+    expect(links, hasLength(2));
+    final adoptionLambing = (await (database.select(database.lambings)..where((l) => l.damId.equals('dam-2'))).get()).singleWhere((l) => l.kind == 'adoption');
+    expect(adoptionLambing.occurredAt.isAfter(DateTime(2026, 2, 11)), isTrue);
 
     final lambHistory = await database.loadAnimalHistory(twin.id);
-    expect(lambHistory.entries.single.detail, allOf(contains('Mama adoptivă: Oaia B'), contains('Mama biologică: Mioara')));
+    final birth = lambHistory.entries.firstWhere((e) => e.category == 'birth');
+    expect(birth.detail, allOf(contains('Mama adoptivă: Oaia B'), contains('Mama biologică: Mioara'), contains('Născut din: gemeni')));
+    expect(lambHistory.birthType, 'twins');
+    expect(lambHistory.entries.any((e) => e.title == 'Adoptat(ă)'), isTrue);
     final bioHistory = await database.loadAnimalHistory(damId);
-    expect(bioHistory.entries.firstWhere((e) => e.category == 'lambing').detail, contains('adoptat de altă oaie'));
+    final birthEntry = bioHistory.entries.firstWhere((e) => e.category == 'lambing' && e.title.contains('miei născuți'));
+    expect(birthEntry.detail, contains('dat spre adopție la Oaia B'));
+    expect(birthEntry.linkedAnimals.map((lamb) => lamb.sex), containsAll(['Femelă', 'Mascul']));
+    expect(birthEntry.linkedAnimals.map((lamb) => lamb.id), contains(twin.id));
+  });
+
+  test('doar mieii pot fi adoptați; animalele adăugate ca adulți nu', () async {
+    await addMother();
+    await database.addAnimal(id: 'dam-2', name: 'Oaia B', sex: 'Femelă', breed: 'Țurcană', earTag: 'RO-002', mark: '');
+    await database.addAnimal(id: 'bought', name: 'Cumpărat', sex: 'Femelă', breed: 'Țurcană', earTag: 'RO-050', mark: '', birthDate: DateTime.now().subtract(const Duration(days: 30)), ageGroup: 'lamb');
+    await database.addAnimal(id: 'adult', name: 'Adultă', sex: 'Femelă', breed: 'Țurcană', earTag: 'RO-051', mark: '', birthDate: DateTime.now().subtract(const Duration(days: 30)), ageGroup: 'adult');
+    final animals = await database.select(database.animals).get();
+    expect(animals.singleWhere((a) => a.id == 'bought').isLamb, isTrue);
+    expect(animals.singleWhere((a) => a.id == 'adult').isLamb, isFalse);
+    await database.adoptLamb(lambId: 'bought', adoptiveDamId: 'dam-2');
+    expect(() => database.adoptLamb(lambId: 'adult', adoptiveDamId: 'dam-2'), throwsArgumentError);
   });
 
   test('animalul vândut rămâne în istoricul mamei și poate reveni în turmă', () async {
