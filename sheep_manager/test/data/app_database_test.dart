@@ -74,6 +74,39 @@ void main() {
     expect(birthEntry.linkedAnimals.map((lamb) => lamb.id), contains(twin.id));
   });
 
+  test('fătările din aceeași zi rămân în ordinea introducerii și tipul cere numărul corect de miei', () async {
+    final damId = await addMother();
+    final day = DateTime(2026, 10, 21);
+    for (final id in ['first', 'second', 'third']) {
+      await database.recordLambing(
+        lambingId: id,
+        damId: damId,
+        occurredAt: day,
+        birthType: 'single',
+        notes: '',
+        lambs: const [],
+        deadLambs: 1,
+      );
+    }
+
+    final records = await database.watchLambings().first;
+    expect(records.map((record) => record.id), ['first', 'second', 'third']);
+    expect(records[0].createdAt.isBefore(records[1].createdAt), isTrue, reason: '${records.map((record) => record.createdAt.toIso8601String()).toList()}');
+    expect(records[1].createdAt.isBefore(records[2].createdAt), isTrue, reason: '${records.map((record) => record.createdAt.toIso8601String()).toList()}');
+
+    await expectLater(
+      database.recordLambing(
+        lambingId: 'incomplete-twins',
+        damId: damId,
+        occurredAt: day,
+        birthType: 'twins',
+        notes: '',
+        lambs: const [LambBirth(name: 'Un singur miel', sex: 'Femelă', breed: 'Țurcană', earTag: 'RO-13')],
+      ),
+      throwsArgumentError,
+    );
+  });
+
   test('doar mieii pot fi adoptați; animalele adăugate ca adulți nu', () async {
     await addMother();
     await database.addAnimal(id: 'dam-2', name: 'Oaia B', sex: 'Femelă', breed: 'Țurcană', earTag: 'RO-002', mark: '');

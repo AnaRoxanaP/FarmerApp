@@ -33,6 +33,11 @@ void main() {
     await tester.tap(find.text('Adaugă în turmă'));
     await tester.pumpAndSettle();
 
+    expect(find.text('Animalul a fost adăugat în turmă.'), findsOneWidget);
+    await tester.ensureVisible(find.text('Gata'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gata'));
+    await tester.pumpAndSettle();
     expect(find.text('Mioara test'), findsOneWidget);
     expect(find.textContaining('RO-900'), findsOneWidget);
     expect(find.byType(EarMarksView), findsOneWidget);
@@ -61,6 +66,8 @@ void main() {
     expect(find.text('Mioara'), findsOneWidget);
     expect(find.text('Crotaliu RO-901'), findsOneWidget);
     expect(find.text('Mieluța · RO-902'), findsOneWidget);
+    expect(tester.widget<Text>(find.text('Crotaliu RO-901')).style?.fontSize, 13);
+    expect(tester.widget<Text>(find.text('Mieluța · RO-902')).style?.fontSize, 13);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(Duration.zero);
@@ -140,9 +147,22 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Mama selectată: Mioara'), findsOneWidget);
+    await tester.scrollUntilVisible(find.byType(DropdownButtonFormField<String>), -200, scrollable: scrollable);
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gemeni').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Mielul 2'), 200, scrollable: scrollable);
+    expect(find.text('Mielul 1'), findsOneWidget);
+    expect(find.text('Mielul 2'), findsOneWidget);
+
     await tester.scrollUntilVisible(saveButton, 200, scrollable: scrollable);
     await tester.pumpAndSettle();
     expect(tester.widget<FilledButton>(saveButton).onPressed, isNotNull);
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Crotaliul este obligatoriu.'), findsAtLeastNWidgets(1));
+    expect(await database.select(database.lambings).get(), isEmpty);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(Duration.zero);
