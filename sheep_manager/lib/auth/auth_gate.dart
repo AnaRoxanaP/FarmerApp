@@ -119,7 +119,8 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Form(
                 key: _formKey,
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  const Icon(Icons.grass_rounded, size: 48),
+                  Image.asset('assets/images/sheep.png',
+                      width: 84, height: 84, fit: BoxFit.cover),
                   const SizedBox(height: 12),
                   Text('Stâna noastră', textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 4),

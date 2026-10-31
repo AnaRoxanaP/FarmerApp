@@ -354,12 +354,11 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
       appBar: AppBar(
         titleSpacing: 20,
         title: Row(children: [
-          Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                  color: _forest, borderRadius: BorderRadius.circular(12)),
-              child: const Icon(Icons.grass_rounded, color: _paper, size: 20)),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.asset('assets/images/sheep.png',
+                width: 36, height: 36, fit: BoxFit.cover),
+          ),
           const SizedBox(width: 10),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Stâna noastră',
