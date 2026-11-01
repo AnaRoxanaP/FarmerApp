@@ -220,11 +220,6 @@ Future<DateTime?> pickDate(BuildContext context,
 String formatDate(DateTime date) =>
     '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
 
-String _timeText(DateTime date) {
-  final local = date.toLocal();
-  return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}:${local.second.toString().padLeft(2, '0')}';
-}
-
 int lambingSeriesYear(DateTime date) =>
     date.month >= 10 ? date.year + 1 : date.year;
 
@@ -703,7 +698,8 @@ class _LambingsScreenState extends State<LambingsScreen> {
                         final offspring = isCattle ? 'vițel' : 'miel';
                         final offspringPlural = isCattle ? 'viței' : 'miei';
                         final isAdoption = record.kind == 'adoption';
-                        final typeLabel = lambingTypeLabel(record.birthType);
+                        final typeLabel = lambingTypeLabel(record.birthType,
+                            species: mother?.species ?? 'sheep');
                         final details = [
                           if (isAdoption) 'Adopție',
                           if (isAdoption && typeLabel.isNotEmpty)
@@ -742,7 +738,7 @@ class _LambingsScreenState extends State<LambingsScreen> {
                                                 CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                  '${formatDate(record.occurredAt)} · înregistrată la ${_timeText(record.createdAt)}',
+                                                  formatDate(record.occurredAt),
                                                   style: const TextStyle(
                                                       fontSize: 11,
                                                       color: _muted)),
@@ -807,7 +803,7 @@ class _LambingsScreenState extends State<LambingsScreen> {
                                             padding: const EdgeInsets.symmetric(
                                                 vertical: 2),
                                             child: Text(
-                                                '${lamb.name.isEmpty ? offspring : lamb.name} · ${lamb.earTag}${!isAdoption && lamb.biologicalDamId == record.damId && lamb.damId != record.damId ? '\n(dat spre adopție la ${byId[lamb.damId]?.name ?? 'altă oaie'})' : ''}',
+                                                '${lamb.name.isEmpty ? offspring : lamb.name} · ${lamb.earTag.isEmpty ? 'fără crotaliu' : lamb.earTag}${!isAdoption && lamb.biologicalDamId == record.damId && lamb.damId != record.damId ? '\n(dat spre adopție la ${byId[lamb.damId]?.name ?? 'altă oaie'})' : ''}',
                                                 textAlign: TextAlign.end,
                                                 style: const TextStyle(
                                                     fontSize: 13,
@@ -1456,7 +1452,7 @@ class _LambFormCardState extends State<_LambFormCard> {
           if (widget.draft.dead)
             const Padding(
                 padding: EdgeInsets.only(bottom: 4),
-                child: Text('Se înregistrează doar că oaia a fătat.',
+                child: Text('Se înregistrează doar că mama a fătat.',
                     style: TextStyle(fontSize: 11, color: _muted))),
           if (!widget.draft.dead) ..._fields(),
         ]),
@@ -1488,10 +1484,10 @@ class _LambFormCardState extends State<_LambFormCard> {
         TextFormField(
             controller: widget.draft.earTag,
             textCapitalization: TextCapitalization.characters,
-            decoration: const InputDecoration(labelText: 'Crotaliu'),
-            validator: (value) => value == null || value.trim().isEmpty
-                ? 'Crotaliul este obligatoriu.'
-                : null),
+            decoration: const InputDecoration(
+                labelText: 'Crotaliu (opțional)',
+                helperText:
+                    'Îl poți adăuga ulterior din fișa animalului, după ce este crotaliat.')),
         const SizedBox(height: 9),
         TextFormField(
             controller: widget.draft.mark,
@@ -2012,7 +2008,10 @@ class _AnimalTile extends StatelessWidget {
               '${animal.categoryLabel} · ${animal.breed} · ${animal.sex.toLowerCase()}',
               style: const TextStyle(fontSize: 11, height: 1.4, color: _muted)),
           const SizedBox(height: 3),
-          Text('Crotaliu ${animal.earTag}',
+          Text(
+              animal.earTag.isEmpty
+                  ? 'Crotaliu neînregistrat'
+                  : 'Crotaliu ${animal.earTag}',
               style: const TextStyle(
                   fontSize: 13, fontWeight: FontWeight.w800, color: _forest)),
         ]),
@@ -2416,7 +2415,8 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
                             const SizedBox(height: 12),
                             _DetailField(
                                 label: 'NĂSCUT DIN',
-                                value: lambingTypeLabel(history.birthType!)),
+                                value: lambingTypeLabel(history.birthType!,
+                                    species: animal.species)),
                           ],
                           const SizedBox(height: 12),
                           Row(
@@ -2598,7 +2598,7 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
                                         const SizedBox(width: 5),
                                         Expanded(
                                           child: Text(
-                                            '${lamb.name.isEmpty ? 'Miel' : lamb.name} · ${lamb.sex}${lamb.earTag.isEmpty ? '' : ' · ${lamb.earTag}'}',
+                                            '${lamb.name.isEmpty ? 'Miel' : lamb.name} · ${lamb.sex}${lamb.earTag.isEmpty ? ' · fără crotaliu' : ' · ${lamb.earTag}'}',
                                             style: const TextStyle(
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w700,

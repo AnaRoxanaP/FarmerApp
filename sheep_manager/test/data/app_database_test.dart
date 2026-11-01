@@ -222,10 +222,66 @@ void main() {
     expect(calf.ageGroup, 'calf');
     expect(calf.categoryLabel, 'Vițel');
     expect(calf.isLamb, isFalse);
+    final calfHistory = await database.loadAnimalHistory(calf.id);
+    final birthEntry =
+        calfHistory.entries.singleWhere((entry) => entry.category == 'birth');
+    expect(birthEntry.detail, contains('Născut din: un vițel'));
     await expectLater(
       database.adoptLamb(lambId: calf.id, adoptiveDamId: 'cow'),
       throwsArgumentError,
     );
+  });
+
+  test('fătarea permite viței fără crotaliu și adăugarea lui ulterioară',
+      () async {
+    await database.addAnimal(
+      id: 'cow-no-tag',
+      name: 'Vaca',
+      sex: 'Femelă',
+      breed: 'Bălțată',
+      earTag: 'RO-C3',
+      mark: '',
+      species: 'cattle',
+      ageGroup: 'adult',
+    );
+    await database.recordLambing(
+      lambingId: 'calving-no-tags',
+      damId: 'cow-no-tag',
+      occurredAt: DateTime(2026, 11, 1),
+      birthType: 'twins',
+      notes: '',
+      lambs: const [
+        LambBirth(name: '', sex: 'Femelă', breed: '', earTag: ''),
+        LambBirth(name: '', sex: 'Mascul', breed: '', earTag: ''),
+      ],
+    );
+
+    final calves = (await database.select(database.animals).get())
+        .where((animal) => animal.id != 'cow-no-tag')
+        .toList();
+    expect(calves, hasLength(2));
+    expect(calves.map((calf) => calf.earTag), everyElement(isEmpty));
+    expect(
+        calves.map((calf) => calf.name), everyElement('Vițel fără crotaliu'));
+
+    final calf = calves.first;
+    await database.updateAnimal(
+      id: calf.id,
+      name: calf.name,
+      sex: calf.sex,
+      breed: calf.breed,
+      earTag: 'RO-CALF-1',
+      mark: calf.mark,
+      birthDate: calf.birthDate,
+      ageGroup: calf.ageGroup,
+      species: calf.species,
+    );
+    expect(
+        (await (database.select(database.animals)
+                  ..where((animal) => animal.id.equals(calf.id)))
+                .getSingle())
+            .earTag,
+        'RO-CALF-1');
   });
 
   test('animalul vândut rămâne în istoricul mamei și poate reveni în turmă',

@@ -116,6 +116,21 @@ void main() {
           earTag: 'RO-2',
           mark: '');
       expect(await database.watchAnimals().first, hasLength(2));
+      await database.addAnimal(
+          id: 'no-tag-1',
+          name: 'Animal fără crotaliu 1',
+          sex: 'Femelă',
+          breed: 'Țurcană',
+          earTag: '',
+          mark: '');
+      await database.addAnimal(
+          id: 'no-tag-2',
+          name: 'Animal fără crotaliu 2',
+          sex: 'Femelă',
+          breed: 'Țurcană',
+          earTag: '',
+          mark: '');
+      expect(await database.watchAnimals().first, hasLength(4));
     } finally {
       await database.close();
       await directory.delete(recursive: true);

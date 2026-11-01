@@ -87,6 +87,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Mioara'), findsOneWidget);
+    expect(find.text('15.10.2026'), findsOneWidget);
+    expect(find.textContaining('înregistrată la'), findsNothing);
     expect(find.text('Crotaliu RO-901'), findsOneWidget);
     expect(find.text('Mieluța · RO-902'), findsOneWidget);
     expect(
@@ -208,8 +210,16 @@ void main() {
     expect(tester.widget<FilledButton>(saveButton).onPressed, isNotNull);
     await tester.tap(saveButton);
     await tester.pumpAndSettle();
-    expect(find.text('Crotaliul este obligatoriu.'), findsAtLeastNWidgets(1));
-    expect(await database.select(database.lambings).get(), isEmpty);
+    expect(find.text('Fătarea și puii au fost salvați.'), findsOneWidget);
+    expect(await database.select(database.lambings).get(), hasLength(1));
+    final calvesOrLambs = await database.select(database.animals).get();
+    expect(
+        calvesOrLambs.where((animal) => animal.id != 'mother-1'), hasLength(2));
+    expect(
+        calvesOrLambs
+            .where((animal) => animal.id != 'mother-1')
+            .every((animal) => animal.earTag.isEmpty),
+        isTrue);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(Duration.zero);

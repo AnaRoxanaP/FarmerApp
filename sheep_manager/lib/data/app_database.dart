@@ -248,7 +248,7 @@ class AppDatabase extends _$AppDatabase {
   static const _localFarmSettingKey = 'local_farm_id';
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -382,6 +382,9 @@ class AppDatabase extends _$AppDatabase {
             await _addColumnIfMissing(
                 'animals', 'species', "TEXT NOT NULL DEFAULT 'sheep'");
           }
+          if (from < 8) {
+            await _createAnimalUniqueIndexes();
+          }
         },
         beforeOpen: (_) async {
           await customStatement('PRAGMA foreign_keys = ON');
@@ -461,10 +464,13 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> _createAnimalUniqueIndexes() async {
+    await customStatement('DROP INDEX IF EXISTS animals_active_ear_tag');
     await customStatement(
-        'CREATE UNIQUE INDEX IF NOT EXISTS animals_active_ear_tag ON animals (farm_id, ear_tag) WHERE deleted_at IS NULL');
+        "CREATE UNIQUE INDEX animals_active_ear_tag ON animals (farm_id, ear_tag) WHERE deleted_at IS NULL AND trim(ear_tag) <> ''");
     await customStatement(
-        'CREATE UNIQUE INDEX IF NOT EXISTS animals_active_internal_number ON animals (farm_id, internal_number) WHERE deleted_at IS NULL AND internal_number IS NOT NULL');
+        'DROP INDEX IF EXISTS animals_active_internal_number');
+    await customStatement(
+        'CREATE UNIQUE INDEX animals_active_internal_number ON animals (farm_id, internal_number) WHERE deleted_at IS NULL AND internal_number IS NOT NULL');
   }
 
   Stream<List<Animal>> watchAnimals(
@@ -514,6 +520,7 @@ class AppDatabase extends _$AppDatabase {
 
     final entries = <AnimalHistoryEntry>[];
     String? birthType;
+    String birthSpecies = 'sheep';
     final ownLinks = await (select(lambingLambs)
           ..where(
               (row) => row.animalId.equals(animalId) & row.deletedAt.isNull()))
@@ -535,6 +542,10 @@ class AppDatabase extends _$AppDatabase {
             detail: 'Mama adoptivă: ${adopter?.name ?? 'necunoscută'}'));
       } else if (lambingTypeLabel(linked.birthType).isNotEmpty) {
         birthType = linked.birthType;
+        final birthDam = await (select(animals)
+              ..where((row) => row.id.equals(linked.damId)))
+            .getSingleOrNull();
+        birthSpecies = birthDam?.species ?? animal.species;
       }
     }
     if (animal.birthDate != null &&
@@ -555,7 +566,7 @@ class AppDatabase extends _$AppDatabase {
         if (animal.sireId != null)
           'Tatăl: ${parentNames[animal.sireId] ?? 'necunoscut'}',
         if (birthType != null)
-          'Născut din: ${lambingTypeLabel(birthType).toLowerCase()}',
+          'Născut din: ${lambingTypeLabel(birthType, species: birthSpecies).toLowerCase()}',
       ].join(' · ');
       entries.add(AnimalHistoryEntry(
         occurredAt: animal.birthDate!,
@@ -579,7 +590,8 @@ class AppDatabase extends _$AppDatabase {
           ? <Animal>[]
           : await (select(animals)..where((row) => row.id.isIn(lambIds))).get();
       final lambById = {for (final lamb in lambAnimals) lamb.id: lamb};
-      final typeLabel = lambingTypeLabel(lambing.birthType);
+      final typeLabel =
+          lambingTypeLabel(lambing.birthType, species: animal.species);
       final dead = lambing.deadLambs ?? 0;
       if (lambing.kind == 'adoption') {
         final names = lambLinks
@@ -588,7 +600,9 @@ class AppDatabase extends _$AppDatabase {
         entries.add(AnimalHistoryEntry(
           occurredAt: lambing.occurredAt,
           category: 'lambing',
-          title: 'A adoptat un miel',
+          title: animal.species == 'cattle'
+              ? 'A fătat și a adoptat un vițel'
+              : 'A adoptat un miel',
           detail: [
             names,
             if (typeLabel.isNotEmpty) 'provine din ${typeLabel.toLowerCase()}',
@@ -623,10 +637,12 @@ class AppDatabase extends _$AppDatabase {
       entries.add(AnimalHistoryEntry(
         occurredAt: lambing.occurredAt,
         category: 'lambing',
-        title: '$total ${total == 1 ? 'miel născut' : 'miei născuți'}',
+        title:
+            '$total ${animal.species == 'cattle' ? (total == 1 ? 'vițel născut' : 'viței născuți') : (total == 1 ? 'miel născut' : 'miei născuți')}',
         detail: [
           names,
-          if (dead > 0) '$dead ${dead == 1 ? 'miel mort' : 'miei morți'}',
+          if (dead > 0)
+            '$dead ${animal.species == 'cattle' ? (dead == 1 ? 'vițel mort' : 'viței morți') : (dead == 1 ? 'miel mort' : 'miei morți')}',
           typeLabel,
           lambing.notes,
         ].where((value) => value.isNotEmpty).join(' · '),
@@ -1625,10 +1641,6 @@ class AppDatabase extends _$AppDatabase {
       throw ArgumentError(
           'Tatăl selectat nu există, nu este activ, nu este mascul sau aparține altei gospodării.');
     }
-    if (lambs.any((birth) => birth.earTag.trim().isEmpty)) {
-      throw ArgumentError('Fiecare miel trebuie să aibă un număr de crotaliu.');
-    }
-
     final farmId = dam.farmId;
     final currentTime = DateTime.now();
     final now = DateTime(currentTime.year, currentTime.month, currentTime.day,
@@ -1661,7 +1673,9 @@ class AppDatabase extends _$AppDatabase {
         final animalId = const Uuid().v4();
         final lambingLambId = const Uuid().v4();
         final offspringName = birth.name.trim().isEmpty
-            ? '${dam.species == 'cattle' ? 'Vițel' : 'Miel'} ${birth.earTag.trim()}'
+            ? birth.earTag.trim().isEmpty
+                ? '${dam.species == 'cattle' ? 'Vițel' : 'Miel'} fără crotaliu'
+                : '${dam.species == 'cattle' ? 'Vițel' : 'Miel'} ${birth.earTag.trim()}'
             : birth.name.trim();
         await into(animals).insert(AnimalsCompanion.insert(
           id: animalId,
@@ -1933,8 +1947,9 @@ extension AnimalAgeGroup on Animal {
 }
 
 /// Eticheta în română a tipului de fătare; adopțiile păstrează tipul fătării originale.
-String lambingTypeLabel(String type) => switch (type) {
-      'single' => 'Un miel',
+String lambingTypeLabel(String type, {String species = 'sheep'}) =>
+    switch (type) {
+      'single' => species == 'cattle' ? 'Un vițel' : 'Un miel',
       'twins' => 'Gemeni',
       'triplets' => 'Tripleți',
       'other' => 'Altă situație',
