@@ -676,6 +676,14 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
       requiredDuringInsert: true,
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('REFERENCES farms (id)'));
+  static const VerificationMeta _speciesMeta =
+      const VerificationMeta('species');
+  @override
+  late final GeneratedColumn<String> species = GeneratedColumn<String>(
+      'species', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('sheep'));
   static const VerificationMeta _nameMeta = const VerificationMeta('name');
   @override
   late final GeneratedColumn<String> name = GeneratedColumn<String>(
@@ -815,6 +823,7 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
   List<GeneratedColumn> get $columns => [
         id,
         farmId,
+        species,
         name,
         internalNumber,
         sex,
@@ -856,6 +865,10 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
           farmId.isAcceptableOrUnknown(data['farm_id']!, _farmIdMeta));
     } else if (isInserting) {
       context.missing(_farmIdMeta);
+    }
+    if (data.containsKey('species')) {
+      context.handle(_speciesMeta,
+          species.isAcceptableOrUnknown(data['species']!, _speciesMeta));
     }
     if (data.containsKey('name')) {
       context.handle(
@@ -962,6 +975,8 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
           .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
       farmId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}farm_id'])!,
+      species: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}species'])!,
       name: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
       internalNumber: attachedDatabase.typeMapping
@@ -1014,6 +1029,7 @@ class $AnimalsTable extends Animals with TableInfo<$AnimalsTable, Animal> {
 class Animal extends DataClass implements Insertable<Animal> {
   final String id;
   final String farmId;
+  final String species;
   final String name;
   final String? internalNumber;
   final String sex;
@@ -1037,6 +1053,7 @@ class Animal extends DataClass implements Insertable<Animal> {
   const Animal(
       {required this.id,
       required this.farmId,
+      required this.species,
       required this.name,
       this.internalNumber,
       required this.sex,
@@ -1062,6 +1079,7 @@ class Animal extends DataClass implements Insertable<Animal> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['farm_id'] = Variable<String>(farmId);
+    map['species'] = Variable<String>(species);
     map['name'] = Variable<String>(name);
     if (!nullToAbsent || internalNumber != null) {
       map['internal_number'] = Variable<String>(internalNumber);
@@ -1109,6 +1127,7 @@ class Animal extends DataClass implements Insertable<Animal> {
     return AnimalsCompanion(
       id: Value(id),
       farmId: Value(farmId),
+      species: Value(species),
       name: Value(name),
       internalNumber: internalNumber == null && nullToAbsent
           ? const Value.absent()
@@ -1156,6 +1175,7 @@ class Animal extends DataClass implements Insertable<Animal> {
     return Animal(
       id: serializer.fromJson<String>(json['id']),
       farmId: serializer.fromJson<String>(json['farmId']),
+      species: serializer.fromJson<String>(json['species']),
       name: serializer.fromJson<String>(json['name']),
       internalNumber: serializer.fromJson<String?>(json['internalNumber']),
       sex: serializer.fromJson<String>(json['sex']),
@@ -1184,6 +1204,7 @@ class Animal extends DataClass implements Insertable<Animal> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'farmId': serializer.toJson<String>(farmId),
+      'species': serializer.toJson<String>(species),
       'name': serializer.toJson<String>(name),
       'internalNumber': serializer.toJson<String?>(internalNumber),
       'sex': serializer.toJson<String>(sex),
@@ -1210,6 +1231,7 @@ class Animal extends DataClass implements Insertable<Animal> {
   Animal copyWith(
           {String? id,
           String? farmId,
+          String? species,
           String? name,
           Value<String?> internalNumber = const Value.absent(),
           String? sex,
@@ -1233,6 +1255,7 @@ class Animal extends DataClass implements Insertable<Animal> {
       Animal(
         id: id ?? this.id,
         farmId: farmId ?? this.farmId,
+        species: species ?? this.species,
         name: name ?? this.name,
         internalNumber:
             internalNumber.present ? internalNumber.value : this.internalNumber,
@@ -1261,6 +1284,7 @@ class Animal extends DataClass implements Insertable<Animal> {
     return Animal(
       id: data.id.present ? data.id.value : this.id,
       farmId: data.farmId.present ? data.farmId.value : this.farmId,
+      species: data.species.present ? data.species.value : this.species,
       name: data.name.present ? data.name.value : this.name,
       internalNumber: data.internalNumber.present
           ? data.internalNumber.value
@@ -1293,6 +1317,7 @@ class Animal extends DataClass implements Insertable<Animal> {
     return (StringBuffer('Animal(')
           ..write('id: $id, ')
           ..write('farmId: $farmId, ')
+          ..write('species: $species, ')
           ..write('name: $name, ')
           ..write('internalNumber: $internalNumber, ')
           ..write('sex: $sex, ')
@@ -1321,6 +1346,7 @@ class Animal extends DataClass implements Insertable<Animal> {
   int get hashCode => Object.hashAll([
         id,
         farmId,
+        species,
         name,
         internalNumber,
         sex,
@@ -1348,6 +1374,7 @@ class Animal extends DataClass implements Insertable<Animal> {
       (other is Animal &&
           other.id == this.id &&
           other.farmId == this.farmId &&
+          other.species == this.species &&
           other.name == this.name &&
           other.internalNumber == this.internalNumber &&
           other.sex == this.sex &&
@@ -1373,6 +1400,7 @@ class Animal extends DataClass implements Insertable<Animal> {
 class AnimalsCompanion extends UpdateCompanion<Animal> {
   final Value<String> id;
   final Value<String> farmId;
+  final Value<String> species;
   final Value<String> name;
   final Value<String?> internalNumber;
   final Value<String> sex;
@@ -1397,6 +1425,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
   const AnimalsCompanion({
     this.id = const Value.absent(),
     this.farmId = const Value.absent(),
+    this.species = const Value.absent(),
     this.name = const Value.absent(),
     this.internalNumber = const Value.absent(),
     this.sex = const Value.absent(),
@@ -1422,6 +1451,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
   AnimalsCompanion.insert({
     required String id,
     required String farmId,
+    this.species = const Value.absent(),
     required String name,
     this.internalNumber = const Value.absent(),
     required String sex,
@@ -1452,6 +1482,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
   static Insertable<Animal> custom({
     Expression<String>? id,
     Expression<String>? farmId,
+    Expression<String>? species,
     Expression<String>? name,
     Expression<String>? internalNumber,
     Expression<String>? sex,
@@ -1477,6 +1508,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (farmId != null) 'farm_id': farmId,
+      if (species != null) 'species': species,
       if (name != null) 'name': name,
       if (internalNumber != null) 'internal_number': internalNumber,
       if (sex != null) 'sex': sex,
@@ -1504,6 +1536,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
   AnimalsCompanion copyWith(
       {Value<String>? id,
       Value<String>? farmId,
+      Value<String>? species,
       Value<String>? name,
       Value<String?>? internalNumber,
       Value<String>? sex,
@@ -1528,6 +1561,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     return AnimalsCompanion(
       id: id ?? this.id,
       farmId: farmId ?? this.farmId,
+      species: species ?? this.species,
       name: name ?? this.name,
       internalNumber: internalNumber ?? this.internalNumber,
       sex: sex ?? this.sex,
@@ -1560,6 +1594,9 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     }
     if (farmId.present) {
       map['farm_id'] = Variable<String>(farmId.value);
+    }
+    if (species.present) {
+      map['species'] = Variable<String>(species.value);
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
@@ -1632,6 +1669,7 @@ class AnimalsCompanion extends UpdateCompanion<Animal> {
     return (StringBuffer('AnimalsCompanion(')
           ..write('id: $id, ')
           ..write('farmId: $farmId, ')
+          ..write('species: $species, ')
           ..write('name: $name, ')
           ..write('internalNumber: $internalNumber, ')
           ..write('sex: $sex, ')
@@ -7609,6 +7647,7 @@ typedef $$FarmMembersTableProcessedTableManager = ProcessedTableManager<
 typedef $$AnimalsTableCreateCompanionBuilder = AnimalsCompanion Function({
   required String id,
   required String farmId,
+  Value<String> species,
   required String name,
   Value<String?> internalNumber,
   required String sex,
@@ -7634,6 +7673,7 @@ typedef $$AnimalsTableCreateCompanionBuilder = AnimalsCompanion Function({
 typedef $$AnimalsTableUpdateCompanionBuilder = AnimalsCompanion Function({
   Value<String> id,
   Value<String> farmId,
+  Value<String> species,
   Value<String> name,
   Value<String?> internalNumber,
   Value<String> sex,
@@ -7771,6 +7811,9 @@ class $$AnimalsTableFilterComposer
   });
   ColumnFilters<String> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get species => $composableBuilder(
+      column: $table.species, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get name => $composableBuilder(
       column: $table.name, builder: (column) => ColumnFilters(column));
@@ -7985,6 +8028,9 @@ class $$AnimalsTableOrderingComposer
   ColumnOrderings<String> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get species => $composableBuilder(
+      column: $table.species, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get name => $composableBuilder(
       column: $table.name, builder: (column) => ColumnOrderings(column));
 
@@ -8113,6 +8159,9 @@ class $$AnimalsTableAnnotationComposer
   });
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get species =>
+      $composableBuilder(column: $table.species, builder: (column) => column);
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
@@ -8345,6 +8394,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
           updateCompanionCallback: ({
             Value<String> id = const Value.absent(),
             Value<String> farmId = const Value.absent(),
+            Value<String> species = const Value.absent(),
             Value<String> name = const Value.absent(),
             Value<String?> internalNumber = const Value.absent(),
             Value<String> sex = const Value.absent(),
@@ -8370,6 +8420,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
               AnimalsCompanion(
             id: id,
             farmId: farmId,
+            species: species,
             name: name,
             internalNumber: internalNumber,
             sex: sex,
@@ -8395,6 +8446,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
           createCompanionCallback: ({
             required String id,
             required String farmId,
+            Value<String> species = const Value.absent(),
             required String name,
             Value<String?> internalNumber = const Value.absent(),
             required String sex,
@@ -8420,6 +8472,7 @@ class $$AnimalsTableTableManager extends RootTableManager<
               AnimalsCompanion.insert(
             id: id,
             farmId: farmId,
+            species: species,
             name: name,
             internalNumber: internalNumber,
             sex: sex,

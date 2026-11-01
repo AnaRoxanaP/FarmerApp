@@ -97,6 +97,12 @@ void main() {
       final mother = (await database.select(database.animals).get())
           .singleWhere((animal) => animal.id == 'dam');
       expect(mother.earMarks, '{"l":["v:top"],"r":[],"h":"none"}');
+      expect(mother.species, 'sheep');
+      expect(
+          (await database.select(database.animals).get())
+              .singleWhere((animal) => animal.earTag == 'RO-2')
+              .species,
+          'sheep');
 
       final lambId = (await database.select(database.animals).get())
           .singleWhere((animal) => animal.earTag == 'RO-2')

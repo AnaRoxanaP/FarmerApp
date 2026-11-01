@@ -16,8 +16,10 @@ void main() {
     await database.close();
   });
 
-  testWidgets('afișează turma goală și permite adăugarea unei oi', (tester) async {
-    await tester.pumpWidget(MaterialApp(home: AnimalListScreen(database: database)));
+  testWidgets('afișează turma goală și permite adăugarea unei oi',
+      (tester) async {
+    await tester
+        .pumpWidget(MaterialApp(home: AnimalListScreen(database: database)));
     await tester.pumpAndSettle();
 
     expect(find.text('Turma începe aici'), findsOneWidget);
@@ -28,7 +30,12 @@ void main() {
     await tester.enterText(fields.at(0), 'Mioara test');
     await tester.enterText(fields.at(1), 'Țurcană');
     await tester.enterText(fields.at(2), 'RO-900');
-    await tester.scrollUntilVisible(find.text('Adaugă în turmă'), 200, scrollable: find.descendant(of: find.byType(AddAnimalSheet), matching: find.byType(Scrollable)).first);
+    await tester.scrollUntilVisible(find.text('Adaugă în turmă'), 200,
+        scrollable: find
+            .descendant(
+                of: find.byType(AddAnimalSheet),
+                matching: find.byType(Scrollable))
+            .first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Adaugă în turmă'));
     await tester.pumpAndSettle();
@@ -38,10 +45,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Gata'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Mioara test'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     expect(find.text('Mioara test'), findsOneWidget);
     expect(find.textContaining('RO-900'), findsOneWidget);
     expect(find.byType(EarMarksView), findsOneWidget);
-    final savedAnimal = await (database.select(database.animals)..where((animal) => animal.earTag.equals('RO-900'))).getSingleOrNull();
+    final savedAnimal = await (database.select(database.animals)
+          ..where((animal) => animal.earTag.equals('RO-900')))
+        .getSingleOrNull();
     expect(savedAnimal, isNotNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -49,25 +61,38 @@ void main() {
     await tester.pump(Duration.zero);
   });
 
-  testWidgets('registrul de fătări arată mama împreună cu mielul ei', (tester) async {
-    await database.addAnimal(id: 'dam-1', name: 'Mioara', sex: 'Femelă', breed: 'Țurcană', earTag: 'RO-901', mark: '');
+  testWidgets('registrul de fătări arată mama împreună cu mielul ei',
+      (tester) async {
+    await database.addAnimal(
+        id: 'dam-1',
+        name: 'Mioara',
+        sex: 'Femelă',
+        breed: 'Țurcană',
+        earTag: 'RO-901',
+        mark: '');
     await database.recordLambing(
       lambingId: 'lambing-1',
       damId: 'dam-1',
       occurredAt: DateTime(2026, 10, 15),
       birthType: 'single',
       notes: '',
-      lambs: const [LambBirth(name: 'Mieluța', sex: 'Femelă', breed: 'Țurcană', earTag: 'RO-902')],
+      lambs: const [
+        LambBirth(
+            name: 'Mieluța', sex: 'Femelă', breed: 'Țurcană', earTag: 'RO-902')
+      ],
     );
 
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: LambingsScreen(database: database))));
+    await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: LambingsScreen(database: database))));
     await tester.pumpAndSettle();
 
     expect(find.text('Mioara'), findsOneWidget);
     expect(find.text('Crotaliu RO-901'), findsOneWidget);
     expect(find.text('Mieluța · RO-902'), findsOneWidget);
-    expect(tester.widget<Text>(find.text('Crotaliu RO-901')).style?.fontSize, 13);
-    expect(tester.widget<Text>(find.text('Mieluța · RO-902')).style?.fontSize, 13);
+    expect(
+        tester.widget<Text>(find.text('Crotaliu RO-901')).style?.fontSize, 13);
+    expect(
+        tester.widget<Text>(find.text('Mieluța · RO-902')).style?.fontSize, 13);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(Duration.zero);
@@ -81,7 +106,13 @@ void main() {
   });
 
   testWidgets('registrul permite schimbarea seriei de fătări', (tester) async {
-    await database.addAnimal(id: 'dam-1', name: 'Mioara', sex: 'Femelă', breed: 'Țurcană', earTag: 'RO-911', mark: '');
+    await database.addAnimal(
+        id: 'dam-1',
+        name: 'Mioara',
+        sex: 'Femelă',
+        breed: 'Țurcană',
+        earTag: 'RO-911',
+        mark: '');
     for (final record in [
       ('late-2025', DateTime(2025, 11, 20), 'Miel noiembrie', 'RO-912'),
       ('early-2026', DateTime(2026, 2, 10), 'Miel februarie', 'RO-913'),
@@ -93,11 +124,18 @@ void main() {
         occurredAt: record.$2,
         birthType: 'single',
         notes: '',
-        lambs: [LambBirth(name: record.$3, sex: 'Femelă', breed: 'Țurcană', earTag: record.$4)],
+        lambs: [
+          LambBirth(
+              name: record.$3,
+              sex: 'Femelă',
+              breed: 'Țurcană',
+              earTag: record.$4)
+        ],
       );
     }
 
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: LambingsScreen(database: database))));
+    await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: LambingsScreen(database: database))));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byType(DropdownButtonFormField<int>));
@@ -121,7 +159,8 @@ void main() {
     await tester.pump(Duration.zero);
   });
 
-  testWidgets('fătarea nu selectează automat mama și cere alegerea explicită', (tester) async {
+  testWidgets('fătarea nu selectează automat mama și cere alegerea explicită',
+      (tester) async {
     await database.addAnimal(
       id: 'mother-1',
       name: 'Mioara',
@@ -131,28 +170,36 @@ void main() {
       mark: '',
     );
 
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: AddLambingSheet(database: database))));
+    await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: AddLambingSheet(database: database))));
     await tester.pumpAndSettle();
 
     expect(find.text('Selectează mama pentru această fătare.'), findsOneWidget);
     final saveButton = find.widgetWithText(FilledButton, 'Salvează fătarea');
-    final scrollable = find.descendant(of: find.byType(AddLambingSheet), matching: find.byType(Scrollable)).first;
+    final scrollable = find
+        .descendant(
+            of: find.byType(AddLambingSheet), matching: find.byType(Scrollable))
+        .first;
     await tester.scrollUntilVisible(saveButton, 200, scrollable: scrollable);
     await tester.pumpAndSettle();
     expect(tester.widget<FilledButton>(saveButton).onPressed, isNull);
 
-    await tester.scrollUntilVisible(find.text('Mioara'), -200, scrollable: scrollable);
+    await tester.scrollUntilVisible(find.text('Mioara'), -200,
+        scrollable: scrollable);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Mioara'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Mama selectată: Mioara'), findsOneWidget);
-    await tester.scrollUntilVisible(find.byType(DropdownButtonFormField<String>), -200, scrollable: scrollable);
+    await tester.scrollUntilVisible(
+        find.byType(DropdownButtonFormField<String>), -200,
+        scrollable: scrollable);
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Gemeni').last);
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('Mielul 2'), 200, scrollable: scrollable);
+    await tester.scrollUntilVisible(find.text('Mielul 2'), 200,
+        scrollable: scrollable);
     expect(find.text('Mielul 1'), findsOneWidget);
     expect(find.text('Mielul 2'), findsOneWidget);
 

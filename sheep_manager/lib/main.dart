@@ -263,12 +263,20 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
                 animal.deletedAt == null && animal.status == _statusFilter)
             .toList(),
       };
-  // Miel = marcat ca miel (fătat sau adăugat manual) și sub un an; animalele vechi fără categorie se deduc din data nașterii.
+  // Gruparea oilor folosește stadiul mielului; bovinele au filtre proprii.
   bool _isLamb(Animal animal) => animal.isLamb;
 
   List<Animal> _filterGroup(List<Animal> animals) => switch (_group) {
-        'lambs' => animals.where(_isLamb).toList(),
-        'sheep' => animals.where((animal) => !_isLamb(animal)).toList(),
+        'lambs' => animals
+            .where((animal) => animal.species == 'sheep' && _isLamb(animal))
+            .toList(),
+        'sheep' => animals
+            .where((animal) => animal.species == 'sheep' && !_isLamb(animal))
+            .toList(),
+        'cattle' => animals
+            .where((animal) => animal.species == 'cattle' && !animal.isCalf)
+            .toList(),
+        'calves' => animals.where((animal) => animal.isCalf).toList(),
         _ => animals,
       };
 
@@ -316,7 +324,7 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
     );
     if (saved == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Fătarea și mieii au fost salvați.')));
+          const SnackBar(content: Text('Fătarea și puii au fost salvați.')));
     }
   }
 
@@ -369,7 +377,7 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
             Text(
                 [
                   'EVIDENȚA TURMEI',
-                  'JURNALUL MIEILOR',
+                  'REGISTRUL FĂTĂRILOR',
                   'SĂNĂTATEA TURMEI'
                 ][_tabIndex],
                 style: TextStyle(
@@ -440,38 +448,42 @@ class _AnimalListScreenState extends State<AnimalListScreen> {
                                     fontSize: 11, color: _muted)),
                           ]),
                       const SizedBox(height: 12),
-                      Wrap(spacing: 8, children: [
-                        for (final option in _statusFilters)
-                          ChoiceChip(
-                            label: Text(option.$2),
-                            selected: _statusFilter == option.$1,
-                            onSelected: (_) =>
-                                setState(() => _statusFilter = option.$1),
-                          ),
-                      ]),
-                      const SizedBox(height: 8),
-                      Wrap(spacing: 8, children: [
-                        for (final option in const [
-                          ('all', 'Toate'),
-                          ('sheep', 'Oi'),
-                          ('lambs', 'Miei')
-                        ])
-                          ChoiceChip(
-                            label: Text(option.$2),
-                            selected: _group == option.$1,
-                            onSelected: (_) =>
-                                setState(() => _group = option.$1),
-                          ),
-                      ]),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _searchController,
-                        onChanged: (value) => setState(() => _query = value),
-                        decoration: const InputDecoration(
-                            prefixIcon: Icon(Icons.search_rounded),
-                            hintText: 'Nume, rasă sau ultimele 3 cifre'),
-                      ),
-                      const SizedBox(height: 7),
+                      if (snapshot.data!.isNotEmpty) ...[
+                        Wrap(spacing: 8, children: [
+                          for (final option in _statusFilters)
+                            ChoiceChip(
+                              label: Text(option.$2),
+                              selected: _statusFilter == option.$1,
+                              onSelected: (_) =>
+                                  setState(() => _statusFilter = option.$1),
+                            ),
+                        ]),
+                        const SizedBox(height: 8),
+                        Wrap(spacing: 8, children: [
+                          for (final option in const [
+                            ('all', 'Toate'),
+                            ('sheep', 'Oi adulte'),
+                            ('lambs', 'Miei'),
+                            ('cattle', 'Vaci / juninci / tauri'),
+                            ('calves', 'Viței')
+                          ])
+                            ChoiceChip(
+                              label: Text(option.$2),
+                              selected: _group == option.$1,
+                              onSelected: (_) =>
+                                  setState(() => _group = option.$1),
+                            ),
+                        ]),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _searchController,
+                          onChanged: (value) => setState(() => _query = value),
+                          decoration: const InputDecoration(
+                              prefixIcon: Icon(Icons.search_rounded),
+                              hintText: 'Nume, rasă sau ultimele 3 cifre'),
+                        ),
+                        const SizedBox(height: 7),
+                      ],
                     ]),
                   ),
                   if (animals.isEmpty)
@@ -533,6 +545,7 @@ class LambingsScreen extends StatefulWidget {
 
 class _LambingsScreenState extends State<LambingsScreen> {
   late int _selectedYear = lambingSeriesYear(DateTime.now());
+  String _speciesFilter = 'all';
 
   // Cele mai noi zile primele; în aceeași zi, în ordinea introducerii (ultima introdusă la final).
   List<Lambing> _orderedRecords(List<Lambing> records) {
@@ -608,7 +621,9 @@ class _LambingsScreenState extends State<LambingsScreen> {
               if (!years.contains(_selectedYear)) _selectedYear = years.first;
               final records = allRecords
                   .where((record) =>
-                      lambingSeriesYear(record.occurredAt) == _selectedYear)
+                      lambingSeriesYear(record.occurredAt) == _selectedYear &&
+                      (_speciesFilter == 'all' ||
+                          byId[record.damId]?.species == _speciesFilter))
                   .toList();
               return CustomScrollView(slivers: [
                 SliverPadding(
@@ -621,11 +636,26 @@ class _LambingsScreenState extends State<LambingsScreen> {
                             fontWeight: FontWeight.w700,
                             color: Color(0xFF18352B))),
                     const SizedBox(height: 5),
-                    const Text('Mamele și mieii, cu istoricul lor păstrat.',
+                    const Text(
+                        'Fătările oilor și vacilor, cu istoricul lor păstrat.',
                         style: TextStyle(fontSize: 13, color: _muted)),
                     const SizedBox(height: 18),
                     _SummaryBanner(count: records.length),
                     const SizedBox(height: 22),
+                    Wrap(spacing: 8, children: [
+                      for (final option in const [
+                        ('all', 'Oi și vaci'),
+                        ('sheep', 'Oi'),
+                        ('cattle', 'Vaci'),
+                      ])
+                        ChoiceChip(
+                          label: Text(option.$2),
+                          selected: _speciesFilter == option.$1,
+                          onSelected: (_) =>
+                              setState(() => _speciesFilter = option.$1),
+                        ),
+                    ]),
+                    const SizedBox(height: 14),
                     DropdownButtonFormField<int>(
                       initialValue: _selectedYear,
                       decoration:
@@ -669,6 +699,9 @@ class _LambingsScreenState extends State<LambingsScreen> {
                         final lambs =
                             lambsByLambing[record.id] ?? const <Animal>[];
                         final dead = record.deadLambs ?? 0;
+                        final isCattle = mother?.species == 'cattle';
+                        final offspring = isCattle ? 'vițel' : 'miel';
+                        final offspringPlural = isCattle ? 'viței' : 'miei';
                         final isAdoption = record.kind == 'adoption';
                         final typeLabel = lambingTypeLabel(record.birthType);
                         final details = [
@@ -748,14 +781,17 @@ class _LambingsScreenState extends State<LambingsScreen> {
                                 Column(
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
-                                      const Text('Miel / miei',
+                                      Text(
+                                          isCattle
+                                              ? 'Vițel / viței'
+                                              : 'Miel / miei',
                                           style: TextStyle(
                                               fontSize: 10,
                                               fontWeight: FontWeight.w700,
                                               color: _muted)),
                                       const SizedBox(height: 4),
                                       if (lambs.isEmpty && dead == 0)
-                                        const Text('Înregistrare fără miel',
+                                        Text('Înregistrare fără $offspring',
                                             style: TextStyle(
                                                 fontSize: 10, color: _muted)),
                                       for (final lamb in lambs)
@@ -771,7 +807,7 @@ class _LambingsScreenState extends State<LambingsScreen> {
                                             padding: const EdgeInsets.symmetric(
                                                 vertical: 2),
                                             child: Text(
-                                                '${lamb.name.isEmpty ? 'Miel' : lamb.name} · ${lamb.earTag}${!isAdoption && lamb.biologicalDamId == record.damId && lamb.damId != record.damId ? '\n(dat spre adopție la ${byId[lamb.damId]?.name ?? 'altă oaie'})' : ''}',
+                                                '${lamb.name.isEmpty ? offspring : lamb.name} · ${lamb.earTag}${!isAdoption && lamb.biologicalDamId == record.damId && lamb.damId != record.damId ? '\n(dat spre adopție la ${byId[lamb.damId]?.name ?? 'altă oaie'})' : ''}',
                                                 textAlign: TextAlign.end,
                                                 style: const TextStyle(
                                                     fontSize: 13,
@@ -785,8 +821,8 @@ class _LambingsScreenState extends State<LambingsScreen> {
                                                 vertical: 2),
                                             child: Text(
                                                 dead == 1
-                                                    ? 'Miel mort'
-                                                    : '$dead miei morți',
+                                                    ? '${isCattle ? 'Vițel' : 'Miel'} mort'
+                                                    : '$dead $offspringPlural morți',
                                                 style: const TextStyle(
                                                     fontSize: 11,
                                                     fontWeight: FontWeight.w700,
@@ -814,14 +850,21 @@ class _LambingsScreenState extends State<LambingsScreen> {
   }
 }
 
-class TreatmentsScreen extends StatelessWidget {
+class TreatmentsScreen extends StatefulWidget {
   const TreatmentsScreen({required this.database, super.key});
   final AppDatabase database;
 
   @override
+  State<TreatmentsScreen> createState() => _TreatmentsScreenState();
+}
+
+class _TreatmentsScreenState extends State<TreatmentsScreen> {
+  String _speciesFilter = 'all';
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Treatment>>(
-      stream: database.watchTreatments(),
+      stream: widget.database.watchTreatments(),
       builder: (context, treatmentSnapshot) {
         if (treatmentSnapshot.hasError) {
           return const _ErrorState(
@@ -831,13 +874,17 @@ class TreatmentsScreen extends StatelessWidget {
           return const Center(child: CircularProgressIndicator(color: _leaf));
         }
         return StreamBuilder<List<Animal>>(
-          stream: database.watchAnimals(includeInactive: true),
+          stream: widget.database.watchAnimals(includeInactive: true),
           builder: (context, animalSnapshot) {
             final byId = {
               for (final animal in animalSnapshot.data ?? const <Animal>[])
                 animal.id: animal
             };
-            final records = treatmentSnapshot.data!;
+            final records = treatmentSnapshot.data!.where((record) {
+              final animal = byId[record.animalId];
+              return _speciesFilter == 'all' ||
+                  animal?.species == _speciesFilter;
+            }).toList();
             return CustomScrollView(slivers: [
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
@@ -855,6 +902,20 @@ class TreatmentsScreen extends StatelessWidget {
                   const SizedBox(height: 18),
                   _SummaryBanner(count: records.length),
                   const SizedBox(height: 22),
+                  Wrap(spacing: 8, children: [
+                    for (final option in const [
+                      ('all', 'Oi și vaci'),
+                      ('sheep', 'Ovine'),
+                      ('cattle', 'Bovine'),
+                    ])
+                      ChoiceChip(
+                        label: Text(option.$2),
+                        selected: _speciesFilter == option.$1,
+                        onSelected: (_) =>
+                            setState(() => _speciesFilter = option.$1),
+                      ),
+                  ]),
+                  const SizedBox(height: 14),
                   Text(
                       '${records.length} ${records.length == 1 ? 'înregistrare' : 'înregistrări'}',
                       style: const TextStyle(
@@ -958,6 +1019,7 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
   final _motherSearch = TextEditingController();
   final _lambs = <_LambDraft>[_LambDraft()];
   String? _damId;
+  String _speciesFilter = 'sheep';
   DateTime _occurredAt = DateUtils.dateOnly(DateTime.now());
   String _birthType = 'single';
   bool _saving = false;
@@ -1028,7 +1090,7 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
     if (_requiredLambCount case final expectedCount?
         when _lambs.length != expectedCount) {
       setState(() => _feedback =
-          'Pentru acest tip de fătare trebuie completate toate cele $expectedCount înregistrări de miei.');
+          'Completează toate cele $expectedCount înregistrări pentru această fătare.');
       return;
     }
     if (!_formKey.currentState!.validate() || _damId == null) return;
@@ -1061,7 +1123,7 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
       setState(() {
         _saving = false;
         _savedSuccessfully = true;
-        _feedback = 'Fătarea și mieii au fost salvați.';
+        _feedback = 'Fătarea și puii au fost salvați.';
       });
     } catch (error) {
       _showSaveError(error);
@@ -1086,9 +1148,12 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
     return StreamBuilder<List<Animal>>(
       stream: widget.database.watchAnimals(),
       builder: (context, snapshot) {
-        final mothers = (snapshot.data ?? const <Animal>[])
+        final allMothers = (snapshot.data ?? const <Animal>[])
             .where(
                 (animal) => animal.sex == 'Femelă' && animal.status == 'active')
+            .toList();
+        final mothers = allMothers
+            .where((animal) => animal.species == _speciesFilter)
             .toList();
         final filteredMothers = _filterMothers(mothers);
         Animal? selectedMother;
@@ -1107,7 +1172,8 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
             maxChildSize: 0.97,
             builder: (context, scrollController) => Column(children: [
               const _SheetHeader(
-                  eyebrow: 'JURNALUL MIEILOR', title: 'Înregistrează fătarea'),
+                  eyebrow: 'JURNALUL FĂTĂRILOR',
+                  title: 'Înregistrează fătarea'),
               if (mothers.isEmpty)
                 const Expanded(
                     child: _RecordEmptyState(
@@ -1123,6 +1189,21 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
                       padding: const EdgeInsets.fromLTRB(22, 4, 22, 18),
                       children: [
                         const _FormLabel(label: 'Mama'),
+                        Wrap(spacing: 8, children: [
+                          for (final option in const [
+                            ('sheep', 'Oaie'),
+                            ('cattle', 'Vacă'),
+                          ])
+                            ChoiceChip(
+                              label: Text(option.$2),
+                              selected: _speciesFilter == option.$1,
+                              onSelected: (_) => setState(() {
+                                _speciesFilter = option.$1;
+                                _damId = null;
+                              }),
+                            ),
+                        ]),
+                        const SizedBox(height: 8),
                         TextField(
                           controller: _motherSearch,
                           onChanged: (_) => setState(() {}),
@@ -1172,7 +1253,7 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
                           const Padding(
                               padding: EdgeInsets.symmetric(vertical: 12),
                               child: Text(
-                                  'Nu am găsit o oaie după acest criteriu.',
+                                  'Nu am găsit o mamă după acest criteriu.',
                                   style:
                                       TextStyle(fontSize: 11, color: _muted)))
                         else
@@ -1208,9 +1289,12 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
                         const _FormLabel(label: 'Tipul fătării'),
                         DropdownButtonFormField<String>(
                           initialValue: _birthType,
-                          items: const [
+                          items: [
                             DropdownMenuItem(
-                                value: 'single', child: Text('Un miel')),
+                                value: 'single',
+                                child: Text(_speciesFilter == 'cattle'
+                                    ? 'Un vițel'
+                                    : 'Un miel')),
                             DropdownMenuItem(
                                 value: 'twins', child: Text('Gemeni')),
                             DropdownMenuItem(
@@ -1225,8 +1309,10 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
                           Expanded(
                               child: Text(
                                   _requiredLambCount == null
-                                      ? 'Mieii'
-                                      : 'Mieii (${_lambs.length}/$_requiredLambCount)',
+                                      ? (_speciesFilter == 'cattle'
+                                          ? 'Vițeii'
+                                          : 'Mieii')
+                                      : '${_speciesFilter == 'cattle' ? 'Vițeii' : 'Mieii'} (${_lambs.length}/$_requiredLambCount)',
                                   style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w800,
@@ -1236,13 +1322,17 @@ class _AddLambingSheetState extends State<AddLambingSheet> {
                                 onPressed: () =>
                                     setState(() => _lambs.add(_LambDraft())),
                                 icon: const Icon(Icons.add, size: 18),
-                                label: const Text('Adaugă miel')),
+                                label: Text(_speciesFilter == 'cattle'
+                                    ? 'Adaugă vițel'
+                                    : 'Adaugă miel')),
                         ]),
                         for (var index = 0; index < _lambs.length; index++)
                           _LambFormCard(
                             key: ObjectKey(_lambs[index]),
                             index: index,
                             draft: _lambs[index],
+                            offspringLabel:
+                                _speciesFilter == 'cattle' ? 'Vițel' : 'Miel',
                             canRemove:
                                 _birthType == 'other' && _lambs.length > 1,
                             onRemove: () => setState(() {
@@ -1320,11 +1410,13 @@ class _LambFormCard extends StatefulWidget {
   const _LambFormCard(
       {required this.index,
       required this.draft,
+      required this.offspringLabel,
       required this.canRemove,
       required this.onRemove,
       super.key});
   final int index;
   final _LambDraft draft;
+  final String offspringLabel;
   final bool canRemove;
   final VoidCallback onRemove;
 
@@ -1342,7 +1434,7 @@ class _LambFormCardState extends State<_LambFormCard> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(
-                child: Text('Mielul ${widget.index + 1}',
+                child: Text('${widget.offspringLabel}ul ${widget.index + 1}',
                     style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF18352B)))),
@@ -1353,9 +1445,9 @@ class _LambFormCardState extends State<_LambFormCard> {
                   visualDensity: VisualDensity.compact)
           ]),
           Row(children: [
-            const Expanded(
-                child: Text('Miel mort (fără crotaliu)',
-                    style: TextStyle(fontSize: 13))),
+            Expanded(
+                child: Text('${widget.offspringLabel} mort (fără crotaliu)',
+                    style: const TextStyle(fontSize: 13))),
             Switch(
                 value: widget.draft.dead,
                 onChanged: (value) =>
@@ -1427,6 +1519,7 @@ class _AddTreatmentSheetState extends State<AddTreatmentSheet> {
   final _meatWait = TextEditingController();
   final _milkWait = TextEditingController();
   final _animalIds = <String>{};
+  String _speciesFilter = 'all';
   DateTime _administeredAt = DateTime.now();
   DateTime? _followUpAt;
   bool _saving = false;
@@ -1535,6 +1628,9 @@ class _AddTreatmentSheetState extends State<AddTreatmentSheet> {
           final query = _animalSearch.text.trim().toLowerCase();
           final queryDigits = query.replaceAll(RegExp(r'\D'), '');
           final filteredAnimals = animals.where((animal) {
+            if (_speciesFilter != 'all' && animal.species != _speciesFilter) {
+              return false;
+            }
             if (query.isEmpty) return true;
             final tagDigits = animal.earTag.replaceAll(RegExp(r'\D'), '');
             return animal.name.toLowerCase().contains(query) ||
@@ -1569,6 +1665,20 @@ class _AddTreatmentSheetState extends State<AddTreatmentSheet> {
                               padding: const EdgeInsets.fromLTRB(22, 4, 22, 18),
                               children: [
                                 const _FormLabel(label: 'Animale tratate'),
+                                Wrap(spacing: 8, children: [
+                                  for (final option in const [
+                                    ('all', 'Oi și vaci'),
+                                    ('sheep', 'Ovine'),
+                                    ('cattle', 'Bovine'),
+                                  ])
+                                    ChoiceChip(
+                                      label: Text(option.$2),
+                                      selected: _speciesFilter == option.$1,
+                                      onSelected: (_) => setState(
+                                          () => _speciesFilter = option.$1),
+                                    ),
+                                ]),
+                                const SizedBox(height: 8),
                                 TextField(
                                   controller: _animalSearch,
                                   onChanged: (_) => setState(() {}),
@@ -1648,7 +1758,7 @@ class _AddTreatmentSheetState extends State<AddTreatmentSheet> {
                                                   fontSize: 12,
                                                   fontWeight: FontWeight.w700)),
                                           subtitle: Text(
-                                              '${animal.breed} · ${animal.earTag}',
+                                              '${animal.categoryLabel} · ${animal.breed} · ${animal.earTag}',
                                               style: const TextStyle(
                                                   fontSize: 10)),
                                           controlAffinity:
@@ -1898,7 +2008,8 @@ class _AnimalTile extends StatelessWidget {
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 4),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${animal.breed} · ${animal.sex.toLowerCase()}',
+          Text(
+              '${animal.categoryLabel} · ${animal.breed} · ${animal.sex.toLowerCase()}',
               style: const TextStyle(fontSize: 11, height: 1.4, color: _muted)),
           const SizedBox(height: 3),
           Text('Crotaliu ${animal.earTag}',
@@ -2248,7 +2359,8 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
                                   fontSize: 25,
                                   fontWeight: FontWeight.w700,
                                   color: Color(0xFF18352B))),
-                          Text('${animal.breed} · ${animal.sex}',
+                          Text(
+                              '${animal.categoryLabel} · ${animal.breed} · ${animal.sex}',
                               style:
                                   const TextStyle(fontSize: 12, color: _muted)),
                         ])),
@@ -2626,8 +2738,10 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
   final _mark = TextEditingController();
   EarMarks _earMarks = const EarMarks();
   String _sex = 'Femelă';
+  String _species = 'sheep';
   DateTime? _birthDate;
   String _ageGroup = 'adult';
+  String _animalCategory = 'sheepAdult';
   bool _saving = false;
   bool _savedSuccessfully = false;
   String? _feedback;
@@ -2637,7 +2751,11 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
     super.initState();
     final animal = widget.animal;
     if (animal != null) {
-      _ageGroup = animal.isLamb ? 'lamb' : 'adult';
+      _species = animal.species;
+      _ageGroup = animal.ageGroup ?? (animal.isLamb ? 'lamb' : 'adult');
+      _animalCategory = animal.species == 'cattle'
+          ? (animal.ageGroup == 'calf' ? 'calf' : 'cattleAdult')
+          : (animal.isLamb ? 'lamb' : 'sheepAdult');
       _name.text = animal.name;
       _breed.text = animal.breed;
       _earTag.text = animal.earTag;
@@ -2673,6 +2791,13 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_species == 'cattle' && _ageGroup == 'calf' && _birthDate == null) {
+      setState(() {
+        _feedback =
+            'Completează data nașterii vițelului pentru a-i actualiza categoria după vârstă.';
+      });
+      return;
+    }
     setState(() {
       _saving = true;
       _feedback = null;
@@ -2691,12 +2816,15 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
           earMarks: _earMarks.encode(),
           birthDate: _birthDate,
           ageGroup: _ageGroup,
+          species: _species,
         );
       } else {
-        final oldGeneratedName = 'Miel ${existingAnimal.earTag}';
+        final generatedPrefix =
+            existingAnimal.species == 'cattle' ? 'Vițel' : 'Miel';
+        final oldGeneratedName = '$generatedPrefix ${existingAnimal.earTag}';
         final editedName = _name.text.trim() == oldGeneratedName &&
                 _earTag.text.trim() != existingAnimal.earTag
-            ? 'Miel ${_earTag.text.trim()}'
+            ? '$generatedPrefix ${_earTag.text.trim()}'
             : _name.text;
         await widget.database.updateAnimal(
           id: existingAnimal.id,
@@ -2708,6 +2836,7 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
           earMarks: _earMarks.encode(),
           birthDate: _birthDate,
           ageGroup: _ageGroup,
+          species: _species,
         );
       }
       if (!mounted) return;
@@ -2792,17 +2921,34 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
                       validator: _required),
                   const SizedBox(height: 15),
                   const _FormLabel(label: 'Categorie'),
-                  SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(
-                            value: 'adult', label: Text('Oaie / berbec')),
-                        ButtonSegment(value: 'lamb', label: Text('Miel'))
-                      ],
-                      selected: {
-                        _ageGroup
-                      },
-                      onSelectionChanged: (selection) =>
-                          setState(() => _ageGroup = selection.first)),
+                  DropdownButtonFormField<String>(
+                    initialValue: _animalCategory,
+                    decoration:
+                        const InputDecoration(labelText: 'Tipul animalului'),
+                    items: const [
+                      DropdownMenuItem(
+                          value: 'sheepAdult', child: Text('Oaie / berbec')),
+                      DropdownMenuItem(value: 'lamb', child: Text('Miel')),
+                      DropdownMenuItem(
+                          value: 'cattleAdult',
+                          child: Text('Vacă / taur adult')),
+                      DropdownMenuItem(value: 'calf', child: Text('Vițel')),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        _animalCategory = value;
+                        _species = value == 'cattleAdult' || value == 'calf'
+                            ? 'cattle'
+                            : 'sheep';
+                        _ageGroup = switch (value) {
+                          'lamb' => 'lamb',
+                          'calf' => 'calf',
+                          _ => 'adult',
+                        };
+                      });
+                    },
+                  ),
                   const SizedBox(height: 14),
                   const _FormLabel(label: 'Sex'),
                   SegmentedButton<String>(
@@ -2845,7 +2991,10 @@ class _AddAnimalSheetState extends State<AddAnimalSheet> {
                           hintText: 'Pentru semne care nu se găsesc în listă'),
                       maxLines: 2),
                   const SizedBox(height: 15),
-                  const _FormLabel(label: 'Data nașterii (opțional)'),
+                  _FormLabel(
+                      label: _species == 'cattle' && _ageGroup == 'calf'
+                          ? 'Data nașterii (necesară pentru vițel)'
+                          : 'Data nașterii (opțional)'),
                   OutlinedButton.icon(
                       onPressed: _pickBirthDate,
                       icon: const Icon(Icons.calendar_month_rounded),

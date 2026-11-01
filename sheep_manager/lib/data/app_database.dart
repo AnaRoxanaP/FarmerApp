@@ -38,6 +38,7 @@ class FarmMembers extends Table {
 class Animals extends Table {
   TextColumn get id => text()();
   TextColumn get farmId => text().references(Farms, #id)();
+  TextColumn get species => text().withDefault(const Constant('sheep'))();
   TextColumn get name => text().withLength(min: 1, max: 120)();
   TextColumn get internalNumber => text().nullable()();
   TextColumn get sex => text()();
@@ -50,7 +51,7 @@ class Animals extends Table {
   TextColumn get sireId => text().nullable().references(Animals, #id)();
   // Mama care a fătat mielul, când acesta a fost adoptat de altă oaie.
   TextColumn get biologicalDamId => text().nullable()();
-  // 'lamb' sau 'adult'; null la animalele vechi (se deduce din data nașterii).
+  // 'lamb'/'adult' pentru oi și miei, 'calf'/'adult' pentru bovine.
   TextColumn get ageGroup => text().nullable()();
   TextColumn get origin => text().withDefault(const Constant('born'))();
   DateTimeColumn get createdAt => dateTime().clientDefault(DateTime.now)();
@@ -247,7 +248,7 @@ class AppDatabase extends _$AppDatabase {
   static const _localFarmSettingKey = 'local_farm_id';
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -376,6 +377,10 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 6) {
             await _addColumnIfMissing('animals', 'age_group', 'TEXT');
+          }
+          if (from < 7) {
+            await _addColumnIfMissing(
+                'animals', 'species', "TEXT NOT NULL DEFAULT 'sheep'");
           }
         },
         beforeOpen: (_) async {
@@ -937,6 +942,7 @@ class AppDatabase extends _$AppDatabase {
     final sire = await _requireAnimal(sireId);
     if (dam.sex != 'Femelă' ||
         sire.sex != 'Mascul' ||
+        dam.species != sire.species ||
         dam.status != 'active' ||
         sire.status != 'active' ||
         dam.farmId != sire.farmId) {
@@ -1426,13 +1432,18 @@ class AppDatabase extends _$AppDatabase {
     String? earMarks,
     DateTime? birthDate,
     String? ageGroup,
+    String species = 'sheep',
   }) async {
+    if (species != 'sheep' && species != 'cattle') {
+      throw ArgumentError('Specia animalului nu este acceptată.');
+    }
     final now = DateTime.now();
     final farmId = await ensureLocalFarm();
     await transaction(() async {
       await into(animals).insert(AnimalsCompanion.insert(
         id: id,
         farmId: farmId,
+        species: Value(species),
         name: name.trim(),
         sex: sex,
         breed: breed.trim(),
@@ -1452,6 +1463,7 @@ class AppDatabase extends _$AppDatabase {
         payload: {
           'id': id,
           'farmId': farmId,
+          'species': species,
           'name': name.trim(),
           'sex': sex,
           'breed': breed.trim(),
@@ -1478,6 +1490,7 @@ class AppDatabase extends _$AppDatabase {
     String? earMarks,
     DateTime? birthDate,
     String? ageGroup,
+    String? species,
   }) async {
     final animal = await _requireAnimal(id);
     final now = DateTime.now();
@@ -1488,6 +1501,7 @@ class AppDatabase extends _$AppDatabase {
       await (update(animals)..where((row) => row.id.equals(id)))
           .write(AnimalsCompanion(
         name: Value(name.trim()),
+        species: species == null ? const Value.absent() : Value(species),
         sex: Value(sex),
         breed: Value(breed.trim()),
         earTag: Value(earTag.trim()),
@@ -1507,6 +1521,7 @@ class AppDatabase extends _$AppDatabase {
           'ageGroup': ageGroup ?? animal.ageGroup,
           'id': id,
           'farmId': animal.farmId,
+          'species': species ?? animal.species,
           'name': name.trim(),
           'sex': sex,
           'breed': breed.trim(),
@@ -1590,7 +1605,10 @@ class AppDatabase extends _$AppDatabase {
     final dam = await (select(animals)
           ..where((animal) => animal.id.equals(damId)))
         .getSingleOrNull();
-    if (dam == null || dam.sex != 'Femelă' || dam.status != 'active') {
+    if (dam == null ||
+        dam.sex != 'Femelă' ||
+        dam.status != 'active' ||
+        (dam.species != 'sheep' && dam.species != 'cattle')) {
       throw ArgumentError(
           'Mama selectată nu există, nu este activă sau nu este femelă.');
     }
@@ -1602,6 +1620,7 @@ class AppDatabase extends _$AppDatabase {
         (sire == null ||
             sire.sex != 'Mascul' ||
             sire.status != 'active' ||
+            sire.species != dam.species ||
             sire.farmId != dam.farmId)) {
       throw ArgumentError(
           'Tatăl selectat nu există, nu este activ, nu este mascul sau aparține altei gospodării.');
@@ -1612,7 +1631,8 @@ class AppDatabase extends _$AppDatabase {
 
     final farmId = dam.farmId;
     final currentTime = DateTime.now();
-    final now = DateTime(currentTime.year, currentTime.month, currentTime.day, currentTime.hour, currentTime.minute, currentTime.second);
+    final now = DateTime(currentTime.year, currentTime.month, currentTime.day,
+        currentTime.hour, currentTime.minute, currentTime.second);
     await transaction(() async {
       final latestLambing = await (select(lambings)
             ..where((row) => row.farmId.equals(farmId))
@@ -1640,13 +1660,14 @@ class AppDatabase extends _$AppDatabase {
       for (final birth in lambs) {
         final animalId = const Uuid().v4();
         final lambingLambId = const Uuid().v4();
-        final lambName = birth.name.trim().isEmpty
-            ? 'Miel ${birth.earTag.trim()}'
+        final offspringName = birth.name.trim().isEmpty
+            ? '${dam.species == 'cattle' ? 'Vițel' : 'Miel'} ${birth.earTag.trim()}'
             : birth.name.trim();
         await into(animals).insert(AnimalsCompanion.insert(
           id: animalId,
           farmId: farmId,
-          name: lambName,
+          species: Value(dam.species),
+          name: offspringName,
           sex: birth.sex,
           breed: birth.breed.trim().isEmpty ? dam.breed : birth.breed.trim(),
           earTag: birth.earTag.trim(),
@@ -1655,7 +1676,7 @@ class AppDatabase extends _$AppDatabase {
           damId: Value(damId),
           sireId: Value(sireId),
           origin: const Value('born'),
-          ageGroup: const Value('lamb'),
+          ageGroup: Value(dam.species == 'cattle' ? 'calf' : 'lamb'),
           createdAt: Value(now),
           updatedAt: Value(now),
         ));
@@ -1683,11 +1704,29 @@ class AppDatabase extends _$AppDatabase {
           payload: {
             'id': animalId,
             'farmId': farmId,
-            'name': lambName,
+            'name': offspringName,
+            'species': dam.species,
             'damId': damId,
             'sireId': sireId,
             'earTag': birth.earTag.trim()
           },
+          createdAt: now,
+        );
+      }
+
+      if (dam.species == 'cattle') {
+        await (update(animals)..where((animal) => animal.id.equals(damId)))
+            .write(AnimalsCompanion(
+          ageGroup: const Value('adult'),
+          updatedAt: Value(now),
+          syncState: const Value('pending'),
+        ));
+        await _queueSync(
+          farmId: farmId,
+          entityType: 'animal',
+          entityId: damId,
+          operation: 'upsert',
+          payload: {'id': damId, 'species': 'cattle', 'ageGroup': 'adult'},
           createdAt: now,
         );
       }
@@ -1719,7 +1758,12 @@ class AppDatabase extends _$AppDatabase {
       DateTime? adoptedAt}) async {
     final lamb = await _requireAnimal(lambId);
     final adoptive = await _requireAnimal(adoptiveDamId);
-    if (!lamb.isLamb) throw ArgumentError('Doar mieii pot avea mamă adoptivă.');
+    if (lamb.species != 'sheep' || !lamb.isLamb) {
+      throw ArgumentError('Doar mieii de oaie pot avea mamă adoptivă.');
+    }
+    if (adoptive.species != 'sheep') {
+      throw ArgumentError('Mama adoptivă trebuie să fie o oaie.');
+    }
     if (adoptive.sex != 'Femelă' || adoptive.status != 'active') {
       throw ArgumentError('Mama adoptivă trebuie să fie o femelă din turmă.');
     }
@@ -1858,12 +1902,33 @@ class AppDatabase extends _$AppDatabase {
 extension AnimalAgeGroup on Animal {
   /// Miel: marcat explicit ca miel și sub un an, sau (fără marcaj) născut în ultimul an.
   bool get isLamb {
+    if (species != 'sheep') return false;
     final born = birthDate;
-    final underOneYear =
-        born == null || DateTime.now().difference(born).inDays < 365;
+    final underOneYear = born == null ||
+        DateTime.now().isBefore(DateTime(born.year + 1, born.month, born.day));
     if (ageGroup == 'lamb') return underOneYear;
     if (ageGroup == 'adult') return false;
     return born != null && underOneYear;
+  }
+
+  bool get isCalf {
+    if (species != 'cattle' || ageGroup != 'calf') return false;
+    final born = birthDate;
+    return born == null ||
+        DateTime.now().isBefore(DateTime(born.year + 1, born.month, born.day));
+  }
+
+  bool get isBovine => species == 'cattle';
+
+  String get categoryLabel {
+    if (species != 'cattle') {
+      return isLamb ? 'Miel' : (sex == 'Femelă' ? 'Oaie' : 'Berbec');
+    }
+    if (ageGroup == 'calf' && isCalf) return 'Vițel';
+    if (sex == 'Femelă') {
+      return ageGroup == 'calf' ? 'Junincă' : 'Vacă';
+    }
+    return 'Taur';
   }
 }
 

@@ -9,7 +9,11 @@ import '../data/app_database.dart';
 typedef _Json = Map<String, dynamic>;
 
 class _Entity {
-  const _Entity({required this.collection, required this.exportAll, required this.exportOne, required this.apply});
+  const _Entity(
+      {required this.collection,
+      required this.exportAll,
+      required this.exportOne,
+      required this.apply});
 
   final String collection;
   final Future<List<_Json>> Function(AppDatabase db) exportAll;
@@ -27,12 +31,14 @@ _Entity _entity<T extends Table, D extends DataClass>({
   Future<D?> findLocal(AppDatabase db, String id) {
     final info = table(db);
     final idColumn = info.columnsByName['id']! as GeneratedColumn<String>;
-    return (db.select(info)..where((_) => idColumn.equals(id))).getSingleOrNull();
+    return (db.select(info)..where((_) => idColumn.equals(id)))
+        .getSingleOrNull();
   }
 
   return _Entity(
     collection: collection,
-    exportAll: (db) async => (await db.select(table(db)).get()).map((row) => row.toJson()).toList(),
+    exportAll: (db) async =>
+        (await db.select(table(db)).get()).map((row) => row.toJson()).toList(),
     exportOne: (db, id) async => (await findLocal(db, id))?.toJson(),
     apply: (db, json) async {
       final remote = fromJson(json);
@@ -45,7 +51,11 @@ _Entity _entity<T extends Table, D extends DataClass>({
 
 /// Sincronizează baza locală (SQLite) cu Firestore: trimite coada de modificări și aplică modificările venite de la celelalte device-uri.
 class SyncService {
-  SyncService({required this.database, required this.farmId, FirebaseFirestore? firestore}) : _firestore = firestore ?? FirebaseFirestore.instance;
+  SyncService(
+      {required this.database,
+      required this.farmId,
+      FirebaseFirestore? firestore})
+      : _firestore = firestore ?? FirebaseFirestore.instance;
 
   final AppDatabase database;
   final String farmId;
@@ -67,17 +77,26 @@ class SyncService {
     if (errors.length > 5) errors.removeAt(0);
   }
 
-  Future<int> remoteAnimalCount() async => (await _collection(_animals).count().get(source: AggregateSource.server)).count ?? 0;
+  Future<int> remoteAnimalCount() async =>
+      (await _collection(_animals).count().get(source: AggregateSource.server))
+          .count ??
+      0;
 
   Future<int> localAnimalCount() async {
-    final rows = await (database.select(database.animals)..where((row) => row.farmId.equals(farmId))).get();
+    final rows = await (database.select(database.animals)
+          ..where((row) => row.farmId.equals(farmId)))
+        .get();
     return rows.length;
   }
 
   /// O linie pe animal din cloud, cu motivul pentru care ar putea lipsi din listă.
   Future<List<String>> diagnoseAnimals() async {
-    final remote = await _collection(_animals).get(const GetOptions(source: Source.server));
-    final local = {for (final row in await database.select(database.animals).get()) row.id: row};
+    final remote = await _collection(_animals)
+        .get(const GetOptions(source: Source.server));
+    final local = {
+      for (final row in await database.select(database.animals).get())
+        row.id: row
+    };
     return [
       for (final doc in remote.docs)
         () {
@@ -86,7 +105,10 @@ class SyncService {
           final notes = <String>[
             if (data['status'] != 'active') 'status=${data['status']}',
             if (data['deletedAt'] != null) 'șters',
-            if (row == null) 'LIPSEȘTE local' else if (row.farmId != farmId) 'altă gospodărie local',
+            if (row == null)
+              'LIPSEȘTE local'
+            else if (row.farmId != farmId)
+              'altă gospodărie local',
           ];
           return '${data['name']} (${data['earTag']}): ${notes.isEmpty ? 'ok' : notes.join(', ')}';
         }(),
@@ -96,7 +118,8 @@ class SyncService {
   static final _animals = _entity<$AnimalsTable, Animal>(
     collection: 'animals',
     table: (db) => db.animals,
-    fromJson: Animal.fromJson,
+    fromJson: (json) =>
+        Animal.fromJson({...json, 'species': json['species'] ?? 'sheep'}),
     updatedAt: (row) => row.updatedAt,
     upsert: (db, row) => db.into(db.animals).insertOnConflictUpdate(row),
   );
@@ -143,7 +166,15 @@ class SyncService {
     upsert: (db, row) => db.into(db.animalEvents).insertOnConflictUpdate(row),
   );
 
-  static final _all = [_animals, _lambings, _lambingLambs, _treatments, _weighings, _breedingEvents, _animalEvents];
+  static final _all = [
+    _animals,
+    _lambings,
+    _lambingLambs,
+    _treatments,
+    _weighings,
+    _breedingEvents,
+    _animalEvents
+  ];
   static final _byQueueType = {
     'animal': _animals,
     'lambing': _lambings,
@@ -154,12 +185,23 @@ class SyncService {
     'animal_event': _animalEvents,
   };
 
-  CollectionReference<_Json> _collection(_Entity entity) => _firestore.collection('farms').doc(farmId).collection(entity.collection);
+  CollectionReference<_Json> _collection(_Entity entity) =>
+      _firestore.collection('farms').doc(farmId).collection(entity.collection);
 
   /// Mută rândurile rămase sub un id de gospodărie vechi în gospodăria curentă (aplicația are o singură gospodărie per cont).
   Future<void> repairFarmIds() async {
-    for (final table in const ['animals', 'lambings', 'lambing_lambs', 'treatments', 'breeding_events', 'weighings', 'animal_events', 'sync_queue']) {
-      await database.customStatement('UPDATE $table SET farm_id = ? WHERE farm_id != ?', [farmId, farmId]);
+    for (final table in const [
+      'animals',
+      'lambings',
+      'lambing_lambs',
+      'treatments',
+      'breeding_events',
+      'weighings',
+      'animal_events',
+      'sync_queue'
+    ]) {
+      await database.customStatement(
+          'UPDATE $table SET farm_id = ? WHERE farm_id != ?', [farmId, farmId]);
     }
   }
 
@@ -185,14 +227,17 @@ class SyncService {
         (snapshot) {
           for (final change in snapshot.docChanges) {
             final data = change.doc.data();
-            if (change.type == DocumentChangeType.removed || data == null || change.doc.metadata.hasPendingWrites) continue;
+            if (change.type == DocumentChangeType.removed ||
+                data == null ||
+                change.doc.metadata.hasPendingWrites) continue;
             _enqueueApply(entity, data);
           }
         },
         onError: (Object error) => _fail('${entity.collection}: $error'),
       ));
     }
-    _subscriptions.add(database.select(database.syncQueue).watch().listen((rows) {
+    _subscriptions
+        .add(database.select(database.syncQueue).watch().listen((rows) {
       if (rows.isNotEmpty) unawaited(push());
     }));
   }
@@ -239,13 +284,17 @@ class SyncService {
           if (_stopped) return;
           final entity = _byQueueType[item.entityType];
           if (entity != null) await _upload(entity, item.entityId);
-          await (database.delete(database.syncQueue)..where((row) => row.id.equals(item.id))).go();
+          await (database.delete(database.syncQueue)
+                ..where((row) => row.id.equals(item.id)))
+              .go();
         }
       } while (_pushAgain);
     } catch (error) {
       _fail('trimiterea a eșuat, reîncerc: $error');
       _retryTimer?.cancel();
-      if (!_stopped) _retryTimer = Timer(const Duration(seconds: 30), () => unawaited(push()));
+      if (!_stopped)
+        _retryTimer =
+            Timer(const Duration(seconds: 30), () => unawaited(push()));
     } finally {
       _pushing = false;
     }
@@ -256,7 +305,9 @@ class SyncService {
     if (json == null) return;
     await _collection(entity).doc(id).set(json);
     if (identical(entity, _lambings)) {
-      final links = await (database.select(database.lambingLambs)..where((row) => row.lambingId.equals(id))).get();
+      final links = await (database.select(database.lambingLambs)
+            ..where((row) => row.lambingId.equals(id)))
+          .get();
       for (final link in links) {
         await _collection(_lambingLambs).doc(link.id).set(link.toJson());
       }
