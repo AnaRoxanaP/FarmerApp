@@ -2374,6 +2374,18 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          _DetailField(label: 'RASĂ', value: animal.breed),
+                          if (animal.origin == 'born' && animal.damId != null)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 5),
+                              child: Text(
+                                  'Dacă rasa nu a fost completată la fătare, se preia rasa mamei.',
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      height: 1.4,
+                                      color: _muted)),
+                            ),
+                          const SizedBox(height: 12),
                           _DetailField(label: 'CROTALIU', value: animal.earTag),
                           if (animal.internalNumber != null &&
                               animal.internalNumber!.isNotEmpty) ...[

@@ -100,6 +100,46 @@ void main() {
     await tester.pump(Duration.zero);
   });
 
+  testWidgets('fișa unui vițel arată rasa și explicația rasei moștenite',
+      (tester) async {
+    await database.addAnimal(
+      id: 'cow-breed',
+      name: 'Vaca Bălțată',
+      sex: 'Femelă',
+      breed: 'Bălțată',
+      earTag: 'RO-C10',
+      mark: '',
+      species: 'cattle',
+      ageGroup: 'adult',
+    );
+    await database.recordLambing(
+      lambingId: 'calving-breed',
+      damId: 'cow-breed',
+      occurredAt: DateTime(2026, 10, 15),
+      birthType: 'single',
+      notes: '',
+      lambs: const [
+        LambBirth(name: 'Vițel', sex: 'Mascul', breed: '', earTag: '')
+      ],
+    );
+    final calf = (await database.select(database.animals).get())
+        .singleWhere((animal) => animal.id != 'cow-breed');
+
+    await tester.pumpWidget(MaterialApp(
+        home: AnimalDetailScreen(database: database, animalId: calf.id)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('RASĂ'), findsOneWidget);
+    expect(find.text('Bălțată'), findsOneWidget);
+    expect(
+        find.text(
+            'Dacă rasa nu a fost completată la fătare, se preia rasa mamei.'),
+        findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(Duration.zero);
+  });
+
   test('fătările de la sfârșitul anului intră în seria anului următor', () {
     expect(lambingSeriesYear(DateTime(2025, 11, 30)), 2026);
     expect(lambingSeriesYear(DateTime(2026, 2, 1)), 2026);
