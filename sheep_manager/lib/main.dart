@@ -2072,34 +2072,38 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
     final notes = TextEditingController();
     var status = animal.status;
     var date = DateTime.now();
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: _paper,
       builder: (context) => StatefulBuilder(
-        builder: (context, setLocal) => AlertDialog(
-          title: const Text('Schimbă starea'),
-          content: SingleChildScrollView(
+        builder: (context, setLocal) => Padding(
+          padding:
+              EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
             child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  for (final option in const [
-                    ('active', 'În turmă'),
-                    ('sold', 'Vândut(ă)'),
-                    ('slaughtered', 'Sacrificat(ă)'),
-                    ('deceased', 'Decedat(ă)'),
-                    ('transferred', 'Transferat(ă)')
-                  ])
-                    ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                          status == option.$1
-                              ? Icons.radio_button_checked
-                              : Icons.radio_button_unchecked,
-                          color: _leaf),
-                      title: Text(option.$2),
-                      onTap: () => setLocal(() => status = option.$1),
-                    ),
+                  Text('Schimbă starea',
+                      style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 12),
+                  Wrap(spacing: 8, runSpacing: 4, children: [
+                    for (final option in const [
+                      ('active', 'În turmă'),
+                      ('sold', 'Vândut(ă)'),
+                      ('slaughtered', 'Sacrificat(ă)'),
+                      ('deceased', 'Decedat(ă)'),
+                      ('transferred', 'Transferat(ă)')
+                    ])
+                      ChoiceChip(
+                        label: Text(option.$2),
+                        selected: status == option.$1,
+                        onSelected: (_) => setLocal(() => status = option.$1),
+                      ),
+                  ]),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.event_outlined),
@@ -2121,18 +2125,22 @@ class _AnimalDetailScreenState extends State<AnimalDetailScreen> {
                       decoration: const InputDecoration(
                           hintText: 'Detalii (ex: cumpărător, preț)'),
                       maxLines: 2),
+                  const SizedBox(height: 12),
+                  Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Anulează')),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                            onPressed: status == animal.status
+                                ? null
+                                : () => Navigator.pop(context, true),
+                            child: const Text('Salvează')),
+                      ]),
                 ]),
           ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Anulează')),
-            FilledButton(
-                onPressed: status == animal.status
-                    ? null
-                    : () => Navigator.pop(context, true),
-                child: const Text('Salvează')),
-          ],
         ),
       ),
     );
